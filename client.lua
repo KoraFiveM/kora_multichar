@@ -21,7 +21,7 @@ local lastCharacters = {}
 -- (this bugged silently: qbcore kept auto-selecting slot 1 a moment after
 -- connect regardless, so every later selection from this UI failed with
 -- "source already logged in").
-exports.qbcore:multichar_claimUI()
+exports.qbcore:claimUI()
 
 ---Smallest slot in 1..MAX_CHARACTERS not occupied by an existing character.
 ---@param characters table[]
