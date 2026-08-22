@@ -15,8 +15,13 @@ local lastCharacters = {}
 -- Suppress qbcore's built-in auto-select/auto-create flow
 -- (qbcore/modules/multichar/client.lua) -- must run before its 500ms grace
 -- window elapses, which this does trivially since it's top-level code that
--- runs the moment this resource starts.
-_G.__qbcoreCharSelectUI = true
+-- runs the moment this resource starts. This is a real cross-resource export
+-- call, not a `_G` flag -- every resource gets its own isolated Lua VM, so a
+-- `_G` write here would never actually be visible to qbcore's own script
+-- (this bugged silently: qbcore kept auto-selecting slot 1 a moment after
+-- connect regardless, so every later selection from this UI failed with
+-- "source already logged in").
+exports.qbcore:multichar_claimUI()
 
 ---Smallest slot in 1..MAX_CHARACTERS not occupied by an existing character.
 ---@param characters table[]
