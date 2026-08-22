@@ -4,7 +4,12 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Character Select</title>
-  <link rel="stylesheet" href="style.css" />
+  <!-- Cache-busting query strings: FiveM's NUI browser (CEF) can serve a
+       stale cached copy of these files across reconnects/restarts,
+       independent of the server-side resource actually updating -- bump
+       this value on every change to html/app.js or html/style.css so a
+       fresh connect can never render old NUI code against new server data. -->
+  <link rel="stylesheet" href="style.css?v=3" />
 </head>
 <body>
   <div id="root" class="root" hidden>
@@ -68,6 +73,6 @@
       </div>
     </div>
   </div>
-  <script src="app.js"></script>
+  <script src="app.js?v=3"></script>
 </body>
 </html>
