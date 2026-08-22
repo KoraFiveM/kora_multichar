@@ -127,8 +127,13 @@ RegisterNUICallback('multichar:select', function(data, cb)
 end)
 
 RegisterNUICallback('multichar:create', function(data, cb)
-    local cid = nextFreeSlot(lastCharacters)
-    if not cid then
+    -- Immediate feedback without a round-trip if the client's own copy of
+    -- maxCharacters (refreshed from the server on every list request) is
+    -- already exhausted. Not the enforcement point, though: qbcore's
+    -- Core.player.createCharacter is the actual authority and computes its
+    -- own free slot server-side -- no cid is sent here, since a client-
+    -- supplied one would only ever be a guess the server already distrusts.
+    if not nextFreeSlot(lastCharacters) then
         SendNUIMessage({ action = 'multichar:error', data = 'You have reached the maximum number of characters.' })
         cb({})
         return
@@ -141,7 +146,6 @@ RegisterNUICallback('multichar:create', function(data, cb)
         gender = 0,
         nationality = 'USA',
         phone = tostring(math.random(1000000, 9999999)),
-        cid = cid,
     })
     cb({})
 end)

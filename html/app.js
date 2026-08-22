@@ -50,7 +50,12 @@
   function characterName(character) {
     const info = character.charinfo || {};
     const name = `${info.firstname || ""} ${info.lastname || ""}`.trim();
-    return name || character.name || `Character ${character.cid}`;
+    if (name) return name;
+    if (character.name) return character.name;
+    // A literal cid is only meaningful when it's actually present -- string-
+    // interpolating an undefined one silently reads as "Character undefined"
+    // (indistinguishable from a real bug) instead of an obvious placeholder.
+    return typeof character.cid === "number" ? `Character ${character.cid}` : "Unnamed Character";
   }
 
   function initials(name) {
