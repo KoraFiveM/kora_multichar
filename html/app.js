@@ -1,8 +1,12 @@
 (function () {
-  const resourceName = window.GetParentResourceName ? window.GetParentResourceName() : "multichar";
+  const resourceName = window.GetParentResourceName ? window.GetParentResourceName() : "qb-multichar";
 
   const root = document.getElementById("root");
+  const kickerEl = document.getElementById("kicker");
+  const charStageEl = document.getElementById("char-stage");
   const slotsEl = document.getElementById("slots");
+  const spawnStageEl = document.getElementById("spawn-stage");
+  const spawnSlotsEl = document.getElementById("spawn-slots");
   const toastEl = document.getElementById("toast");
   const toastMessageEl = document.getElementById("toast-message");
   const overlayEl = document.getElementById("overlay");
@@ -17,6 +21,8 @@
     '<svg width="14" height="14" viewBox="0 0 16 16" fill="currentColor"><path d="M4 2.5v11l10-5.5z"/></svg>';
   const ICON_TRASH =
     '<svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M3 4.5h10M6.5 4.5V3a1 1 0 0 1 1-1h1a1 1 0 0 1 1 1v1.5M6 7v4.5M10 7v4.5M4 4.5l.6 8a1 1 0 0 0 1 .9h4.8a1 1 0 0 0 1-.9l.6-8"/></svg>';
+  const ICON_PIN =
+    '<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5c-2.2 0-4 1.8-4 4 0 3 4 9 4 9s4-6 4-9c0-2.2-1.8-4-4-4z"/><circle cx="8" cy="5.5" r="1.5"/></svg>';
 
   let characters = [];
   let maxCharacters = 5;
@@ -70,6 +76,63 @@
     slotsEl.classList.toggle("busy", value);
     slotsEl.style.pointerEvents = value ? "none" : "";
     slotsEl.style.opacity = value ? "0.6" : "";
+  }
+
+  let spawnBusy = false;
+
+  function setSpawnBusy(value) {
+    spawnBusy = value;
+    spawnSlotsEl.style.pointerEvents = value ? "none" : "";
+    spawnSlotsEl.style.opacity = value ? "0.6" : "";
+  }
+
+  function chooseSpawn(typeLoc, spawnloc) {
+    if (spawnBusy) return;
+    setSpawnBusy(true);
+    fetchNui("multichar:spawn:choose", { typeLoc, spawnloc });
+  }
+
+  function renderSpawnLocations(data) {
+    const locations = (data && data.locations) || {};
+    spawnSlotsEl.innerHTML = "";
+
+    const current = document.createElement("div");
+    current.className = "slot spawn";
+    current.tabIndex = 0;
+    current.innerHTML = `
+      <div class="slot-avatar slot-avatar-spawn">${ICON_PIN}</div>
+      <div class="slot-name">Stay Here</div>
+      <div class="slot-meta"><span class="chip">Last location</span></div>
+    `;
+    current.addEventListener("click", () => chooseSpawn("current"));
+    spawnSlotsEl.appendChild(current);
+
+    Object.keys(locations).forEach((key) => {
+      const location = locations[key];
+      const slot = document.createElement("div");
+      slot.className = "slot spawn";
+      slot.tabIndex = 0;
+      slot.innerHTML = `
+        <div class="slot-avatar slot-avatar-spawn">${ICON_PIN}</div>
+        <div class="slot-name">${location.label || key}</div>
+      `;
+      slot.addEventListener("click", () => chooseSpawn("normal", key));
+      spawnSlotsEl.appendChild(slot);
+    });
+  }
+
+  function showSpawnStage(data) {
+    const visible = !!(data && data.visible);
+    if (!visible) {
+      close();
+      return;
+    }
+    setSpawnBusy(false);
+    charStageEl.hidden = true;
+    spawnStageEl.hidden = false;
+    if (kickerEl) kickerEl.textContent = "SELECT SPAWN LOCATION";
+    root.hidden = false;
+    requestAnimationFrame(() => root.classList.add("visible"));
   }
 
   function render() {
@@ -229,12 +292,23 @@
   }
 
   function show(data) {
-    characters = (data && data.characters) || [];
+    // A genuinely empty Lua table ({}) has no way to tell qbcore's JSON
+    // encoder "I'm an array" -- SendNUIMessage serializes it as an empty
+    // OBJECT ({}), not []. A brand-new player with zero characters hits this
+    // every time, so characters.forEach below would throw
+    // "characters.forEach is not a function" and silently abort show()
+    // before the UI ever becomes visible. Normalize defensively instead of
+    // relying on the Lua side to always emit an array shape.
+    const rawCharacters = (data && data.characters) || [];
+    characters = Array.isArray(rawCharacters) ? rawCharacters : Object.values(rawCharacters);
     maxCharacters = (data && data.maxCharacters) || maxCharacters;
     focusedIndex = 0;
     setBusy(false);
     closeModal();
     hideToast();
+    spawnStageEl.hidden = true;
+    charStageEl.hidden = false;
+    if (kickerEl) kickerEl.textContent = "CHARACTER SELECT";
     render();
 
     root.hidden = false;
@@ -246,11 +320,18 @@
     root.classList.remove("visible");
     setTimeout(() => {
       root.hidden = true;
+      charStageEl.hidden = false;
+      spawnStageEl.hidden = true;
     }, 180);
   }
 
   document.addEventListener("keydown", (event) => {
     if (root.hidden) return;
+
+    if (!spawnStageEl.hidden) {
+      if (event.key === "Escape") fetchNui("multichar:spawn:exit");
+      return;
+    }
 
     if (!overlayEl.hidden) {
       if (event.key === "Escape") closeModal();
@@ -278,6 +359,13 @@
         break;
       case "multichar:theme":
         applyTokens(data);
+        break;
+      case "multichar:spawn:show":
+        showSpawnStage(data);
+        break;
+      case "multichar:spawn:locations":
+        setSpawnBusy(false);
+        renderSpawnLocations(data);
         break;
     }
   });

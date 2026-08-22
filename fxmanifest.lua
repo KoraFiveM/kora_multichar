@@ -10,6 +10,14 @@ description 'Custom full-screen character selection for qbcore'
 dependency 'qblib'
 dependency 'qbcore'
 
+-- This resource now fully implements both legacy UIs -- character select AND
+-- spawn selection -- unlike qbcore, which deliberately does NOT provide
+-- 'qb-multicharacter' (see qbcore/fxmanifest.lua's comment: hijacking a name
+-- you don't fully replace would silently break a real UI resource a server
+-- wants to keep). This one does fully replace them, so it claims both names.
+provide 'qb-multicharacter'
+provide 'qb-spawn'
+
 ui_page 'html/index.html'
 
 -- A bare trailing '**' does NOT match files in FiveM's resource globber --
@@ -28,4 +36,8 @@ files {
 -- call, not this one.
 shared_script '@qblib/init.lua'
 
-client_script 'client.lua'
+client_scripts {
+    'config.lua',
+    'client.lua',
+    'spawn.lua',
+}

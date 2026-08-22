@@ -109,6 +109,10 @@ body {
   padding: 0 40px;
 }
 
+.stage[hidden] {
+  display: none;
+}
+
 .slots {
   display: flex;
   flex-wrap: wrap;
@@ -276,6 +280,24 @@ body {
   font-size: 14px;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
+}
+
+/* --- Spawn-location card (reuses .slot; no delete button, no meta chips) --- */
+
+.slot.spawn {
+  min-height: 180px;
+}
+
+.slot-avatar-spawn {
+  background: hsl(var(--surface-raised));
+  color: hsl(var(--primary));
+  box-shadow: none;
+}
+
+.slot.spawn:hover .slot-avatar-spawn,
+.slot.spawn:focus-visible .slot-avatar-spawn {
+  color: hsl(var(--primary-foreground));
+  background: linear-gradient(160deg, hsl(var(--primary)), hsl(var(--brand-pressed)));
 }
 
 /* --- Buttons --- */
