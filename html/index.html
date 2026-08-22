@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Character Select</title>
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <div id="root" class="root" hidden>
+    <div class="backdrop"></div>
+
+    <header class="topbar">
+      <span class="kicker">CHARACTER SELECT</span>
+    </header>
+
+    <main class="stage">
+      <div id="slots" class="slots"></div>
+    </main>
+
+    <div id="toast" class="toast" hidden>
+      <span class="toast-edge"></span>
+      <div class="toast-body">
+        <p class="toast-title">Character select failed</p>
+        <p id="toast-message" class="toast-message"></p>
+      </div>
+      <button id="toast-close" class="toast-close" type="button" aria-label="Dismiss">&times;</button>
+    </div>
+
+    <div id="overlay" class="overlay" hidden>
+      <div class="overlay-backdrop"></div>
+
+      <form id="create-form" class="modal" hidden>
+        <span class="modal-rail"></span>
+        <h2 class="modal-title">New character</h2>
+        <p class="modal-description">Give your character a name to get started.</p>
+
+        <div class="field">
+          <label for="firstname">First name</label>
+          <input id="firstname" name="firstname" type="text" required autocomplete="off" />
+        </div>
+        <div class="field">
+          <label for="lastname">Last name</label>
+          <input id="lastname" name="lastname" type="text" required autocomplete="off" />
+        </div>
+
+        <div class="modal-actions">
+          <button type="button" data-close-modal class="btn btn-ghost">Cancel</button>
+          <button type="submit" class="btn btn-primary">Create character</button>
+        </div>
+      </form>
+
+      <div id="delete-confirm" class="modal" hidden>
+        <span class="modal-rail modal-rail-destructive"></span>
+        <h2 class="modal-title">Delete character</h2>
+        <p class="modal-description">
+          Delete <strong id="delete-confirm-name"></strong>? This cannot be undone.
+        </p>
+
+        <div class="modal-actions">
+          <button type="button" data-close-modal class="btn btn-ghost">Cancel</button>
+          <button type="button" id="delete-confirm-button" class="btn btn-destructive">Delete</button>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script src="app.js"></script>
+</body>
+</html>
