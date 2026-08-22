@@ -2,7 +2,7 @@ fx_version 'cerulean'
 game 'gta5'
 lua54 'yes'
 
-name 'multichar'
+name 'qb-multichar'
 author 'Jamie'
 version '2.0.0'
 description 'Custom full-screen character selection for qbcore'
