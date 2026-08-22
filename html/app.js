@@ -296,7 +296,16 @@
     clearTimeout(toastTimer);
   }
 
-  function show(data) {
+  // A genuine character entry always carries a citizenid string -- every
+  // rendering/action path below (select, delete, characterName's fallbacks)
+  // keys off it. Used to tell a legitimate object-shaped character
+  // collection apart from garbage that merely happens to be a JSON object.
+  function isCharacterLike(value) {
+    return !!value && typeof value === "object" && typeof value.citizenid === "string";
+  }
+
+  function normalizeCharacters(rawCharacters) {
+    if (Array.isArray(rawCharacters)) return rawCharacters;
     // A genuinely empty Lua table ({}) has no way to tell qbcore's JSON
     // encoder "I'm an array" -- SendNUIMessage serializes it as an empty
     // OBJECT ({}), not []. A brand-new player with zero characters hits this
@@ -304,8 +313,21 @@
     // "characters.forEach is not a function" and silently abort show()
     // before the UI ever becomes visible. Normalize defensively instead of
     // relying on the Lua side to always emit an array shape.
+    const values = Object.values(rawCharacters || {});
+    // Object.values({}) is [], and [].every(...) is vacuously true, so a
+    // genuine empty table still normalizes to [] here -- no special case
+    // needed for that path. But a non-empty object whose values are NOT all
+    // character-shaped (e.g. an unresolved qblib promise leaking through as
+    // {state, queue, next}) is not a character collection at all -- treat it
+    // as empty and warn loudly rather than rendering phantom cards for it.
+    if (values.every(isCharacterLike)) return values;
+    console.warn("multichar: received malformed characters payload, treating as empty:", rawCharacters);
+    return [];
+  }
+
+  function show(data) {
     const rawCharacters = (data && data.characters) || [];
-    characters = Array.isArray(rawCharacters) ? rawCharacters : Object.values(rawCharacters);
+    characters = normalizeCharacters(rawCharacters);
     maxCharacters = (data && data.maxCharacters) || maxCharacters;
     focusedIndex = 0;
     setBusy(false);
