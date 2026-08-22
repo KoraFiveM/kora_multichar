@@ -74,7 +74,7 @@ local function refreshCharacters()
     -- safe to call even if something else already shut it down (e.g. a bare
     -- server's spawnmanager on a previous connect). ShutdownLoadingScreen()
     -- alone only tears down the loadingscreen resource's NUI page; with
-    -- loadscreen_manual_shutdown 'yes' (qb-loading/fxmanifest.lua) the
+    -- loadscreen_manual_shutdown 'yes' (qbloading/fxmanifest.lua) the
     -- client stays on a black/stuck screen until ShutdownLoadingScreenNui()
     -- and a fade-in are also fired.
     ShutdownLoadingScreen()

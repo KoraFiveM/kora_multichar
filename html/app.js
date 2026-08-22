@@ -1,5 +1,5 @@
 (function () {
-  const resourceName = window.GetParentResourceName ? window.GetParentResourceName() : "qb-multichar";
+  const resourceName = window.GetParentResourceName ? window.GetParentResourceName() : "qbmultichar";
 
   const root = document.getElementById("root");
   const kickerEl = document.getElementById("kicker");
