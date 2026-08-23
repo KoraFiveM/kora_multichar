@@ -24,6 +24,15 @@
   const ICON_PIN =
     '<svg width="22" height="22" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.4"><path d="M8 1.5c-2.2 0-4 1.8-4 4 0 3 4 9 4 9s4-6 4-9c0-2.2-1.8-4-4-4z"/><circle cx="8" cy="5.5" r="1.5"/></svg>';
 
+  function escapeHtml(str) {
+    return String(str == null ? "" : str)
+      .replace(/&/g, "&amp;")
+      .replace(/</g, "&lt;")
+      .replace(/>/g, "&gt;")
+      .replace(/"/g, "&quot;")
+      .replace(/'/g, "&#39;");
+  }
+
   let characters = [];
   let maxCharacters = 5;
   let focusedIndex = 0;
@@ -119,7 +128,7 @@
       slot.tabIndex = 0;
       slot.innerHTML = `
         <div class="slot-avatar slot-avatar-spawn">${ICON_PIN}</div>
-        <div class="slot-name">${location.label || key}</div>
+        <div class="slot-name">${escapeHtml(location.label || key)}</div>
       `;
       slot.addEventListener("click", () => chooseSpawn("normal", key));
       spawnSlotsEl.appendChild(slot);
@@ -149,11 +158,11 @@
       slot.className = "slot filled";
       slot.tabIndex = 0;
       slot.innerHTML = `
-        <button type="button" class="slot-delete" aria-label="Delete ${name}">${ICON_TRASH}</button>
-        <div class="slot-avatar">${initials(name) || "?"}</div>
-        <div class="slot-name">${name}</div>
+        <button type="button" class="slot-delete" aria-label="Delete ${escapeHtml(name)}">${ICON_TRASH}</button>
+        <div class="slot-avatar">${escapeHtml(initials(name)) || "?"}</div>
+        <div class="slot-name">${escapeHtml(name)}</div>
         <div class="slot-meta">
-          <span class="chip">${jobLabel(character)}</span>
+          <span class="chip">${escapeHtml(jobLabel(character))}</span>
           <span class="chip">Cash ${formatAccount(character, "cash")}</span>
           <span class="chip">Bank ${formatAccount(character, "bank")}</span>
         </div>

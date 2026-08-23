@@ -151,11 +151,14 @@ RegisterNUICallback('multichar:create', function(data, cb)
 end)
 
 RegisterNUICallback('multichar:delete', function(data, cb)
-    TriggerServerEvent('qb-multicharacter:server:deleteCharacter', data.citizenid)
-    -- Real qb-multicharacter's own removeCharacter NUI callback just re-fires
-    -- chooseChar locally to refresh the list; matched here.
+    local deleted, err = QB.callback.trigger('qb-multicharacter:server:deleteCharacter', data.citizenid)
+    if not deleted then
+        SendNUIMessage({ action = 'multichar:error', data = err or 'Could not delete that character.' })
+        cb({ ok = false })
+        return
+    end
     refreshCharacters()
-    cb({})
+    cb({ ok = true })
 end)
 
 RegisterNUICallback('multichar:close', function(_, cb)
