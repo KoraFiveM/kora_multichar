@@ -50,6 +50,16 @@ Config.defaultScene = 'civilian'
 -- defaults without overwriting an explicitly configured id.
 Config.scenes = {}
 
+-- Staff logout. `/logout` drops the character but keeps the connection, which
+-- is what real qb-multicharacter's own admin-only logout command does. The
+-- level is checked through qblib's permission gateway, so the same ace/Discord
+-- grants that reach every other staff tool on the server reach this too.
+Config.logout = {
+    enabled = true,
+    command = 'logout',
+    minimumPermission = 'admin',
+}
+
 Config.creator = {
     enabled = true,
     command = 'multicharscene',

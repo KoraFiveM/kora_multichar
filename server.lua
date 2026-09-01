@@ -11,8 +11,18 @@ local function setBucket(src, bucket)
     if not ok then SetPlayerRoutingBucket(src, bucket) end
 end
 
+-- Cleared mode is published as `false`, NOT as nil. Setting a state bag key to
+-- nil is a DELETION, and a deletion does not replicate to the owning client the
+-- way an ordinary value change does -- the client keeps reading the last mode
+-- forever. Every consumer gates on this key (qbhud's HUD stays hidden while a
+-- cinematic mode is active, qbclothing's first-character flow waits on it), so
+-- a clear that never lands leaves the HUD hidden for the whole session. An
+-- explicit falsy value keeps the clear a normal replicated change. Readers
+-- treat nil and false alike, so nothing breaks if this key was never set.
+local NO_MODE = false
+
 local function writeMode(src, mode)
-    Player(src).state:set('qbmultichar:mode', mode, true)
+    Player(src).state:set('qbmultichar:mode', mode or NO_MODE, true)
 end
 
 local function bucketFor(src, mode)
@@ -105,10 +115,21 @@ QB.callback.register('qbmultichar:server:leaveMode', function(src)
     return leaveMode(src)
 end, { rateLimit = { max = 8, window = 10000 } })
 
-local ranks = { user = 0, mod = 1, admin = 2, god = 3 }
-local function creatorAllowed(src)
-    local ok, level = pcall(function() return exports.qbcore:getPermission(src) end)
-    return ok and (ranks[level] or 0) >= (ranks[Config.creator.minimumPermission] or ranks.admin)
+-- Staff gating goes through qblib's permission gateway rather than a rank
+-- table over qbcore's getPermission. QB.permissions.hasLevel accepts either
+-- `qbcore.<level>` or the bare `group.<level>` principal (which is how this
+-- test server's server.cfg actually grants admin), folds in Discord roles
+-- where a server maps them, and owns the cascade -- so a 'god' satisfies an
+-- 'admin' requirement without chaining ace principals by hand.
+local LEVELS = { 'god', 'admin', 'mod', 'user' } -- most-privileged first
+local PERMISSION_OPTIONS = { prefix = 'qbcore' }
+
+---Matches QB.commands' checkPermission(source, permission) signature.
+---@param src integer
+---@param permission string|nil
+---@return boolean
+local function staffAllowed(src, permission)
+    return QB.permissions.hasLevel(src, permission or 'admin', LEVELS, PERMISSION_OPTIONS)
 end
 
 if Config.creator.enabled then
@@ -125,7 +146,36 @@ if Config.creator.enabled then
         TriggerClientEvent('qbmultichar:client:openCreator', src, SceneSchema.clone(scenes))
     end, {
         permission = Config.creator.minimumPermission,
-        checkPermission = function(src) return creatorAllowed(src) end,
+        checkPermission = staffAllowed,
+    })
+end
+
+-- Staff logout. This drops the character and keeps the connection; it does NOT
+-- tell any client to reopen character select. qbcore's logout clears the
+-- replicated `qbcore:loggedIn` state, and client.lua follows that state --
+-- so an admin resource or a character delete on a live handle returns the
+-- player to selection through exactly the same path this command does.
+if Config.logout.enabled then
+    QB.commands.add(Config.logout.command, 'Drop your character and return to character select', nil, false, function(src)
+        if Player(src).state['qbcore:loggedIn'] ~= true then
+            QB.notify.send(src, { type = 'error', message = 'You are not on a character.' })
+            return
+        end
+        -- Refused mid-cinematic: selection/spawn/creator each own the player's
+        -- routing bucket and camera, and tearing a character out from under
+        -- one of them would strand the client in a scene with no character to
+        -- return to. Leaving the studio or finishing the spawn is one keypress.
+        if sessions[src] then
+            QB.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
+            return
+        end
+        local ok, result = pcall(function() return exports.qbcore:logout(src) end)
+        if not ok or result ~= true then
+            QB.notify.send(src, { type = 'error', message = 'Could not log out of that character.' })
+        end
+    end, {
+        permission = Config.logout.minimumPermission,
+        checkPermission = staffAllowed,
     })
 end
 

@@ -43,6 +43,21 @@ H.test('preview entities stay local and cleanup covers cinematic state', functio
     H.truthy(runtime:find('SetCamActiveWithInterp(finalCam, travelCam', 1, true), 'spawn travel should fly down into the authored final shot')
 end)
 
+H.test('staff logout is permission-gated and travels on the replicated login state', function()
+    H.truthy(server:find('QB.permissions.hasLevel', 1, true), 'staff gating must go through qblib, not a local rank table')
+    H.falsy(server:find('exports.qbcore:getPermission', 1, true),
+        "the hand-rolled rank table over qbcore's getPermission is gone")
+    H.falsy(server:find('local ranks = {', 1, true), 'rank ordering belongs to qblib')
+    H.truthy(server:find('Config.logout.minimumPermission', 1, true), 'the logout level must stay configurable')
+    H.truthy(server:find('exports.qbcore:logout(src)', 1, true), 'the character drop belongs to qbcore')
+    H.falsy(server:find("TriggerClientEvent('qb-multicharacter:client:chooseChar'", 1, true),
+        'logout must not push character select; the client follows qbcore:loggedIn')
+    H.truthy(client:find("AddStateBagChangeHandler('qbcore:loggedIn'", 1, true),
+        'the client returns to selection by following the replicated login state')
+    H.truthy(client:find('if returningToSelection or currentMode ~= nil then return end', 1, true),
+        'the return must not re-enter selection or fight an active cinematic mode')
+end)
+
 H.test('selection previews are cancellable and login only follows explicit continue', function()
     H.truthy(client:find('previewGeneration = previewGeneration + 1', 1, true), 'preview requests need generations')
     H.truthy(client:find('generation ~= previewGeneration', 1, true), 'stale previews must be discarded')

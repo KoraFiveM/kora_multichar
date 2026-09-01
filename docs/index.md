@@ -226,6 +226,33 @@ underscores, or hyphens.
 
 Returns `true`, or `false, error`. Ownership is checked server-side.
 
+## Staff logout
+
+`/logout` drops the staff member's character while keeping their connection,
+putting them straight back into character select. It is gated exactly like the
+scene studio: `Config.logout.minimumPermission` (default `admin`), resolved
+server-side through qblib's permission gateway, so `qbcore.admin`, the bare
+`group.admin` ace, and any Discord roles a server maps all satisfy it, and a
+`god` cascades past an `admin` requirement.
+
+```lua
+Config.logout = {
+    enabled = true,
+    command = 'logout',
+    minimumPermission = 'admin',
+}
+```
+
+The command refuses while a character-select, spawn, or scene-studio session is
+open — those own the routing bucket and camera, and dropping the character
+under them would strand the client in a scene it cannot leave.
+
+The command itself only calls qbcore's logout. Returning to character select
+is driven by the replicated `qbcore:loggedIn` state that logout clears, not by
+an event this resource sends, so **any** logout path lands back in selection —
+an admin resource calling the core export, or a character delete that logs out
+a live handle, behaves identically to `/logout`.
+
 ## Scene Studio
 
 Admins and gods can open `/multicharscene`. The permission check is

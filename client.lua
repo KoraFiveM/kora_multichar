@@ -138,6 +138,40 @@ end
 
 RegisterNetEvent('qb-multicharacter:client:chooseChar', refreshCharacters)
 
+-- Returning to character select after a logout follows qbcore's replicated
+-- login state instead of a private event. qbcore's logout only flushes the
+-- character, clears `qbcore:loggedIn`, and fires its unload events -- it never
+-- tells a character-select UI anything. Watching the state bag means EVERY
+-- logout path lands here: qbmultichar's own /logout, an admin resource calling
+-- the core export, or a delete that logs out a live handle.
+--
+-- Raw AddStateBagChangeHandler rather than QB.state.onChange, for the reason
+-- fxmanifest.lua gives for the NUI natives: the qblib call registers the
+-- handler inside qblib's own VM and relays every change back over a
+-- cross-resource funcref. qbhud and qbclothing watch this same key the same way.
+local returningToSelection = false
+
+local function returnToCharacterSelect()
+    -- currentMode is non-nil for the whole of selection, spawn, and the scene
+    -- studio; those own the camera and the ped already, and the server refuses
+    -- /logout during them. The flag covers the window before the enterMode
+    -- callback returns, when currentMode is still nil.
+    if returningToSelection or currentMode ~= nil then return end
+    returningToSelection = true
+
+    DoScreenFadeOut(250)
+    local deadline = GetGameTimer() + 1000
+    while not IsScreenFadedOut() and GetGameTimer() < deadline do Wait(0) end
+
+    -- A ped logged out at the wheel would be hidden and frozen still seated,
+    -- and would carry that vehicle into the next character's spawn.
+    local ped = PlayerPedId()
+    if IsPedInAnyVehicle(ped, false) then ClearPedTasksImmediately(ped) end
+
+    refreshCharacters()
+    returningToSelection = false
+end
+
 RegisterNetEvent('qb-multicharacter:client:closeNUI', function()
     SceneRuntime.endMode()
     leaveServerMode()
@@ -249,6 +283,13 @@ end)
 
 CreateThread(function()
     while not NetworkIsSessionStarted() do Wait(0) end
+    -- Registered here, not at file scope: the bag name needs a real server id,
+    -- which only exists once the session has started.
+    AddStateBagChangeHandler('qbcore:loggedIn', ('player:%s'):format(QB.cache.serverId()), function(_, _, value)
+        -- State-bag handlers must not yield; returnToCharacterSelect waits on
+        -- the fade and on server callbacks.
+        if value == false then CreateThread(returnToCharacterSelect) end
+    end)
     TriggerEvent('qb-multicharacter:client:chooseChar')
 end)
 
