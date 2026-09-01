@@ -82,7 +82,12 @@ local function streamWorld(coords, generation)
     RequestCollisionAtCoord(coords.x, coords.y, coords.z)
     local started = NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 80.0, 0)
     local deadline = GetGameTimer() + Config.sceneLimits.streamTimeoutMs
-    while started and generation == state.sceneGeneration and not IsNewLoadSceneLoaded() and GetGameTimer() < deadline do Wait(0) end
+    while started and generation == state.sceneGeneration and not IsNewLoadSceneLoaded() and GetGameTimer() < deadline do
+        -- Collision requests are not sticky. Re-issue this while the load
+        -- scene is active so a cold first preview keeps making progress.
+        RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+        Wait(0)
+    end
     local current = generation == state.sceneGeneration
     local loaded = current and started and IsNewLoadSceneLoaded()
     if current and started then NewLoadSceneStop() end
@@ -591,12 +596,16 @@ local function startWorldStream(coords)
     return {
         started = NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 80.0, 0),
         deadline = GetGameTimer() + Config.sceneLimits.streamTimeoutMs,
+        coords = coords,
     }
 end
 
 local function finishWorldStream(ticket, generation)
     while ticket.started and generation == state.sceneGeneration and not IsNewLoadSceneLoaded()
-        and GetGameTimer() < ticket.deadline do Wait(0) end
+        and GetGameTimer() < ticket.deadline do
+        RequestCollisionAtCoord(ticket.coords.x, ticket.coords.y, ticket.coords.z)
+        Wait(0)
+    end
     local current = generation == state.sceneGeneration
     local loaded = current and ticket.started and IsNewLoadSceneLoaded()
     if current and ticket.started and IsNewLoadSceneActive() then NewLoadSceneStop() end

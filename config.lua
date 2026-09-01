@@ -22,7 +22,10 @@ Config.sceneLimits = {
     maxCameras = 8,
     maxCues = 64,
     maxTimelineMs = 120000,
-    streamTimeoutMs = 5000,
+    -- Cold clients can need more than five seconds to pull map collision for
+    -- the first preview. Keep the blackout bounded, but allow the streamer a
+    -- full ten seconds before falling back.
+    streamTimeoutMs = 10000,
 }
 
 -- Cinematic travel between spawn previews. The camera lifts away from the

@@ -28,6 +28,7 @@ H.test('preview entities stay local and cleanup covers cinematic state', functio
         H.truthy(runtime:find(needle, 1, true), 'cleanup contract missing ' .. needle)
     end
     H.truthy(runtime:find('Config.sceneLimits.streamTimeoutMs', 1, true), 'asset and world streaming must be bounded')
+    H.truthy(runtime:find('RequestCollisionAtCoord(ticket.coords.x, ticket.coords.y, ticket.coords.z)', 1, true), 'background spawn streaming must keep collision requested')
     H.truthy(runtime:find('StartShapeTestCapsule', 1, true), 'camera paths should use obstruction-aware collision checks')
     H.truthy(runtime:find('CAMERA_FAN_ANGLES', 1, true), 'blocked cameras should try nearby safe compositions')
     H.truthy(runtime:find('GetGroundZFor_3dCoord', 1, true), 'land characters should resolve against streamed ground collision')

@@ -50,7 +50,7 @@ build` from the `web` directory.
   cruise at a distance-scaled altitude while the destination streams, and dive
   along the authored destination camera's approach. `Config.spawnFlight`
   controls altitude, speed, and the three transition timings. A bounded
-  five-second load falls back behind a blackout to a safe overview camera.
+  ten-second load falls back behind a blackout to a safe overview camera.
 - New characters use the same mandatory carousel (including a **First
   Arrival** option). qbclothing's mandatory first-character creator waits for
   the chosen spawn and complete cinematic cleanup before opening.
@@ -182,7 +182,7 @@ can be staged in a local vehicle with
 `seat = { vehicle = 'stable_vehicle_id', index = -1 }`.
 
 Default limits in `Config.sceneLimits` are 64 registered scenes, 8 NPCs, 6
-vehicles, 24 props, 8 cameras, 64 cues, a 120-second timeline, and a five-second
+vehicles, 24 props, 8 cameras, 64 cues, a 120-second timeline, and a ten-second
 stream timeout.
 
 ## Runtime scene exports
