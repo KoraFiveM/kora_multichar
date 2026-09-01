@@ -1,0 +1,420 @@
+import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
+import {
+  Box, Briefcase, CalendarDays, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clapperboard, Copy,
+  Crosshair, Fingerprint, Flag, Info, LoaderCircle, LogOut, MapPin, MousePointer2, Move3d,
+  Plane, Play, Plus, Save, Sparkles, Trash2, UserPlus, Users, Wallet, X,
+} from "lucide-react";
+import { applyTheme, fetchNui } from "./nui";
+import { characterName, isValidBirthdate, money, normalizeCharacters, wrapIndex } from "./lib";
+import type { Character, NuiMessage, SceneDraft, SpawnLocation } from "./types";
+
+type Stage = "hidden" | "characters" | "spawn" | "creator";
+type CreatorPayload = { draft?: SceneDraft; scenes?: Record<string, SceneDraft>; cursor?: boolean; error?: string };
+
+function roleLabel(role: Character["job"], fallback: string) {
+  return role?.label || role?.name || fallback;
+}
+
+function gradeLabel(role: Character["job"]) {
+  return role?.grade?.name || `Grade ${role?.grade?.level ?? 0}`;
+}
+
+function characterInitials(character: Character) {
+  const first = character.charinfo?.firstname?.trim().charAt(0) || "";
+  const last = character.charinfo?.lastname?.trim().charAt(0) || "";
+  return `${first}${last}`.toUpperCase() || "?";
+}
+
+export function App() {
+  const [stage, setStage] = useState<Stage>("hidden");
+  const [characters, setCharacters] = useState<Character[]>([]);
+  const [maxCharacters, setMaxCharacters] = useState(5);
+  const [index, setIndex] = useState(0);
+  const [details, setDetails] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [deleting, setDeleting] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [previewing, setPreviewing] = useState(false);
+  const [spawnTraveling, setSpawnTraveling] = useState(false);
+  const spawnCameraReady = useRef(false);
+  const [sceneName, setSceneName] = useState("");
+  const [toast, setToast] = useState<string | null>(null);
+  const [spawns, setSpawns] = useState<SpawnLocation[]>([]);
+  const [spawnIndex, setSpawnIndex] = useState(0);
+  const [creatorDraft, setCreatorDraft] = useState<SceneDraft | null>(null);
+  const [creatorScenes, setCreatorScenes] = useState<Record<string, SceneDraft>>({});
+  const [creatorCursor, setCreatorCursor] = useState(true);
+  const [exported, setExported] = useState<string | null>(null);
+
+  const canCreate = characters.length < maxCharacters;
+  const slideCount = characters.length + (canCreate ? 1 : 0);
+  const character = index < characters.length ? characters[index] : null;
+  const spawn = spawns[spawnIndex] ?? null;
+
+  useEffect(() => {
+    const listener = (event: MessageEvent<NuiMessage>) => {
+      const { action, data } = event.data || {};
+      if (action === "multichar:theme") applyTheme(data);
+      else if (action === "multichar:show") {
+        const payload = data as { characters?: unknown; maxCharacters?: number };
+        setCharacters(normalizeCharacters(payload?.characters));
+        setMaxCharacters(Number(payload?.maxCharacters) || 5);
+        spawnCameraReady.current = false;
+        setIndex(0); setStage("characters"); setBusy(false); setDetails(false); setCreating(false); setDeleting(false); setPreviewing(true); setSpawnTraveling(false);
+      } else if (action === "multichar:close") setStage("hidden");
+      else if (action === "multichar:error") { setToast(String(data || "Something went wrong.")); setBusy(false); }
+      else if (action === "multichar:previewLoading") setPreviewing(true);
+      else if (action === "multichar:previewReady") {
+        const payload = data as { scene?: string; error?: string; ok?: boolean };
+        setPreviewing(false); setSceneName(payload.scene || "");
+        if (payload.ok === false && payload.error) setToast(payload.error);
+      } else if (action === "multichar:spawn:locations") {
+        const locations = (data as { locations?: SpawnLocation[] })?.locations;
+        setSpawns(Array.isArray(locations) ? locations : []); setSpawnIndex(0);
+      } else if (action === "multichar:spawn:show" && (data as { visible?: boolean })?.visible) {
+        spawnCameraReady.current = false;
+        setStage("spawn"); setBusy(false); setSpawnIndex(0); setPreviewing(true); setSpawnTraveling(false);
+      } else if (action === "multichar:input") {
+        window.dispatchEvent(new CustomEvent("qbmultichar-input", { detail: data }));
+      } else if (action === "multichar:creator:show") {
+        const payload = data as CreatorPayload;
+        setCreatorDraft(payload.draft ?? null); setCreatorScenes(payload.scenes ?? {}); setCreatorCursor(payload.cursor !== false); setStage("creator");
+      } else if (action === "multichar:creator:state") {
+        const payload = data as CreatorPayload;
+        if (payload.draft) setCreatorDraft(payload.draft);
+        if (payload.scenes) setCreatorScenes(payload.scenes);
+        if (typeof payload.cursor === "boolean") setCreatorCursor(payload.cursor);
+        if (payload.error) setToast(payload.error);
+      } else if (action === "multichar:creator:cursor") setCreatorCursor((data as { cursor?: boolean })?.cursor === true);
+      else if (action === "multichar:creator:close") setStage("hidden");
+      else if (action === "multichar:creator:exported") {
+        setExported((data as { registerCall?: boolean })?.registerCall ? "Registration call copied" : "Config copied");
+        window.setTimeout(() => setExported(null), 2400);
+      } else if (action === "multichar:creator:validated") {
+        setExported(String((data as { message?: string })?.message || "Scene is valid"));
+        window.setTimeout(() => setExported(null), 2400);
+      }
+    };
+    window.addEventListener("message", listener);
+    fetchNui("multichar:getTheme").then(applyTheme);
+    return () => window.removeEventListener("message", listener);
+  }, []);
+
+  useEffect(() => {
+    if (stage !== "characters" || creating || deleting || slideCount === 0) return;
+    setPreviewing(true);
+    const timer = window.setTimeout(() => {
+      if (character) fetchNui("multichar:preview", { citizenid: character.citizenid });
+      else fetchNui("multichar:createPreview", { gender: 0 });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [stage, index, character?.citizenid, creating, deleting, slideCount]);
+
+  useEffect(() => {
+    if (stage !== "spawn" || !spawn) return;
+    let active = true;
+    const initial = !spawnCameraReady.current;
+    if (initial) setPreviewing(true);
+    else setSpawnTraveling(true);
+    fetchNui<{ ok?: boolean }>("multichar:spawn:focus", { id: spawn.id }).then((result) => {
+      if (!active) return;
+      if (result?.ok === false) {
+        setToast("That arrival could not be previewed safely. Try another location.");
+        return;
+      }
+      spawnCameraReady.current = true;
+      if (initial) setPreviewing(false);
+    }).finally(() => { if (active) setSpawnTraveling(false); });
+    return () => { active = false; };
+  }, [stage, spawn?.id]);
+
+  const move = (delta: number) => {
+    if (stage === "characters" && !creating && !deleting && slideCount) {
+      setPreviewing(true); setIndex((value) => wrapIndex(value, delta, slideCount)); setDetails(false);
+    } else if (stage === "spawn" && spawns.length && !previewing && !spawnTraveling) {
+      setSpawnIndex((value) => wrapIndex(value, delta, spawns.length));
+    }
+  };
+
+  const accept = () => {
+    if (busy || previewing || spawnTraveling) return;
+    if (stage === "characters" && !creating && !deleting) {
+      if (!character) setCreating(true);
+      else { setBusy(true); fetchNui("multichar:select", { citizenid: character.citizenid }); }
+    } else if (stage === "spawn" && spawn) {
+      setBusy(true); fetchNui("multichar:spawn:choose", { id: spawn.id });
+    }
+  };
+
+  useEffect(() => {
+    const controller = (event: Event) => {
+      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
+      if (key === "left") move(-1);
+      else if (key === "right") move(1);
+      else if (key === "accept") accept();
+    };
+    const keyboard = (event: KeyboardEvent) => {
+      if (stage === "hidden" || stage === "creator" || creating || deleting || ["INPUT", "TEXTAREA", "SELECT"].includes((event.target as HTMLElement)?.tagName)) return;
+      if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") move(-1);
+      else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") move(1);
+      else if (event.key === "Enter") accept();
+      else if (event.key === "Escape" && stage === "spawn") fetchNui("multichar:spawn:exit");
+    };
+    window.addEventListener("qbmultichar-input", controller);
+    window.addEventListener("keydown", keyboard);
+    return () => { window.removeEventListener("qbmultichar-input", controller); window.removeEventListener("keydown", keyboard); };
+  });
+
+  useEffect(() => {
+    if (!toast) return;
+    const timer = window.setTimeout(() => setToast(null), 6000);
+    return () => window.clearTimeout(timer);
+  }, [toast]);
+
+  if (stage === "hidden") return null;
+
+  return (
+    <div className={`app stage-${stage}`}>
+      <div className="vignette" />
+      {toast && <div className="toast"><Sparkles size={16} /><span>{toast}</span><button onClick={() => setToast(null)}><X size={15} /></button></div>}
+      {stage === "characters" && (
+        <CharacterScreen
+          characters={characters} character={character} index={index} count={slideCount} canCreate={canCreate}
+          details={details} previewing={previewing} sceneName={sceneName} busy={busy}
+          onMove={move} onAccept={accept} onDetails={() => setDetails((value) => !value)}
+          onCreate={() => setCreating(true)} onDelete={() => setDeleting(true)}
+        />
+      )}
+      {stage === "spawn" && <SpawnScreen location={spawn} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} onMove={move} onAccept={accept} />}
+      {stage === "creator" && creatorDraft && (
+        <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
+      )}
+      {previewing && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} />}
+      {creating && <CreateDialog onClose={() => setCreating(false)} onBusy={setBusy} />}
+      {deleting && character && <DeleteDialog character={character} onClose={() => setDeleting(false)} onBusy={setBusy} />}
+    </div>
+  );
+}
+
+function SceneTransition({ stage }: { stage: "characters" | "spawn" }) {
+  return <div className="scene-transition" role="status" aria-live="polite">
+    <div className="transition-frame" aria-hidden><span /><span /><span /></div>
+    <div className="transition-content">
+      <span className="transition-brand">QBCORE · CINEMATIC</span>
+      <div className="transition-pulse"><Clapperboard size={20} /></div>
+      <h2>{stage === "spawn" ? "Scouting your arrival" : "Setting your scene"}</h2>
+      <p>Streaming the world and finding a clear camera angle</p>
+      <div className="transition-progress"><i /></div>
+    </div>
+  </div>;
+}
+
+function CharacterScreen(props: {
+  characters: Character[]; character: Character | null; index: number; count: number; canCreate: boolean;
+  details: boolean; previewing: boolean; sceneName: string; busy: boolean;
+  onMove: (delta: number) => void; onAccept: () => void; onDetails: () => void; onCreate: () => void; onDelete: () => void;
+}) {
+  const { character } = props;
+  const job = character ? roleLabel(character.job, "Civilian") : "Create a new story";
+  const gang = character?.gang?.name && character.gang.name !== "none" ? character.gang : null;
+  const position = String(props.index + 1).padStart(2, "0");
+  const total = String(props.characters.length).padStart(2, "0");
+  return <>
+    <header className="topbar">
+      <div><span className="eyebrow">QBCORE</span><h1>Choose your story</h1></div>
+      <button className="icon-button" aria-label="Disconnect" onClick={() => fetchNui("multichar:disconnect")}><LogOut size={18} /></button>
+    </header>
+    <div className="scene-label"><Clapperboard size={13} />{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</div>
+    {props.details && character && <Dossier character={character} onClose={props.onDetails} onDelete={props.onDelete} />}
+    <section className="carousel-shell">
+      <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(-1)} aria-label="Previous"><ChevronLeft /></button>
+      <div className={`identity-card character-card${character ? "" : " new-character-card"}`}>
+        <div className="identity-mark" aria-hidden>{character ? characterInitials(character) : <UserPlus size={22} />}</div>
+        <div className="identity-copy">
+          <div className="identity-kicker">
+            <span className="eyebrow">{character ? "SELECTED IDENTITY" : "AVAILABLE CHARACTER SLOT"}</span>
+            {character ? <span className="profile-count"><strong>{position}</strong><i>/</i>{total}</span> : <span className="new-slot-chip">NEW</span>}
+          </div>
+          <h2>{character ? characterName(character) : "Create character"}</h2>
+          {character ? <div className="identity-meta">
+            <span className="career-label"><Briefcase size={13} />{job}</span>
+            <span className="rank-chip">{gradeLabel(character.job)}</span>
+            {gang && <span className="affiliation-chip"><Users size={12} />{roleLabel(gang, gang.name || "Affiliation")}</span>}
+          </div> : <p>Use this slot to begin a new story in Los Santos.</p>}
+        </div>
+        <div className="identity-actions">
+          {character && <button className="button ghost profile-button" aria-expanded={props.details} onClick={props.onDetails}><Info size={16} />Profile</button>}
+          <button className="button primary" disabled={props.busy || props.previewing} onClick={props.onAccept}>
+            {props.busy ? <LoaderCircle className="spin" size={17} /> : character ? <Play size={17} fill="currentColor" /> : <UserPlus size={17} />}
+            {character ? "Continue" : "Create"}
+          </button>
+        </div>
+      </div>
+      <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(1)} aria-label="Next"><ChevronRight /></button>
+    </section>
+    <div className="key-hints"><kbd>←</kbd><kbd>→</kbd><span>Browse</span><kbd>Enter</kbd><span>Continue</span></div>
+  </>;
+}
+
+function Dossier({ character, onClose, onDelete }: { character: Character; onClose: () => void; onDelete: () => void }) {
+  const gang = character.gang?.name && character.gang.name !== "none" ? character.gang : null;
+  return <aside className="dossier panel">
+    <div className="dossier-heading">
+      <div className="identity-mark compact" aria-hidden>{characterInitials(character)}</div>
+      <div><span className="eyebrow">CHARACTER PROFILE</span><h3>{characterName(character)}</h3><p>{roleLabel(character.job, "Civilian")} · {gradeLabel(character.job)}</p></div>
+      <button className="icon-button" aria-label="Close profile" onClick={onClose}><X size={16} /></button>
+    </div>
+    <div className="detail-list">
+      <div><Briefcase /><span><small>Career</small><strong>{roleLabel(character.job, "Civilian")}</strong><em>{gradeLabel(character.job)}</em></span></div>
+      <div><Users /><span><small>Affiliation</small><strong>{gang ? roleLabel(gang, gang.name || "Gang") : "None"}</strong><em>{gang ? gradeLabel(gang) : "Independent"}</em></span></div>
+      <div><Wallet /><span><small>Finances</small><strong>{money(character.money?.bank)} bank</strong><em>{money(character.money?.cash)} cash</em></span></div>
+      <div><CalendarDays /><span><small>Birth date</small><strong>{character.charinfo?.birthdate || "Unknown"}</strong><em>Registered identity</em></span></div>
+      <div><Flag /><span><small>Nationality</small><strong>{character.charinfo?.nationality || "Unknown"}</strong><em>Place of origin</em></span></div>
+      <div><Fingerprint /><span><small>Citizen record</small><strong>{character.citizenid}</strong><em>Permanent identifier</em></span></div>
+    </div>
+    <button className="danger-link" onClick={onDelete}><Trash2 size={14} />Delete character</button>
+  </aside>;
+}
+
+function CreateDialog({ onClose, onBusy }: { onClose: () => void; onBusy: (value: boolean) => void }) {
+  const [gender, setGender] = useState(0);
+  const [error, setError] = useState("");
+  const submit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
+    const form = new FormData(event.currentTarget);
+    const firstname = String(form.get("firstname") || "").trim();
+    const lastname = String(form.get("lastname") || "").trim();
+    const birthdate = String(form.get("birthdate") || "");
+    const nationality = String(form.get("nationality") || "").trim();
+    if (!firstname || firstname.length > 24 || !lastname || lastname.length > 24) { setError("Names must be between 1 and 24 characters."); return; }
+    if (!isValidBirthdate(birthdate)) { setError("Enter a real, non-future birth date."); return; }
+    if (nationality.length < 2 || nationality.length > 32) { setError("Nationality must be between 2 and 32 characters."); return; }
+    onBusy(true); onClose();
+    fetchNui("multichar:create", { firstname, lastname, birthdate, nationality, gender });
+  };
+  return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><form className="modal panel create-modal" onSubmit={submit}>
+    <div className="modal-rail" /><div className="panel-heading"><div><span className="eyebrow">NEW IDENTITY</span><h3>Create character</h3></div><button type="button" className="icon-button" onClick={onClose}><X size={16} /></button></div>
+    <p className="modal-copy">Build the identity. You will customize appearance immediately after spawning.</p>
+    <div className="field-grid"><label>First name<input name="firstname" autoFocus maxLength={24} required /></label><label>Last name<input name="lastname" maxLength={24} required /></label></div>
+    <div className="field-grid"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} defaultValue="2000-01-01" required /></label><label>Nationality<input name="nationality" defaultValue="USA" maxLength={32} required /></label></div>
+    <div className="segmented" aria-label="Body model"><button type="button" className={gender === 0 ? "active" : ""} onClick={() => { setGender(0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male model</button><button type="button" className={gender === 1 ? "active" : ""} onClick={() => { setGender(1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female model</button></div>
+    {error && <p className="form-error">{error}</p>}
+    <div className="modal-actions"><button type="button" className="button ghost" onClick={onClose}>Cancel</button><button className="button primary"><UserPlus size={16} />Create identity</button></div>
+  </form></div>;
+}
+
+function DeleteDialog({ character, onClose, onBusy }: { character: Character; onClose: () => void; onBusy: (value: boolean) => void }) {
+  const name = characterName(character); const [typed, setTyped] = useState("");
+  return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><div className="modal panel delete-modal">
+    <div className="modal-rail danger" /><div className="panel-heading"><div><span className="eyebrow">PERMANENT ACTION</span><h3>Delete {name}?</h3></div><button className="icon-button" onClick={onClose}><X size={16} /></button></div>
+    <p className="modal-copy">This cannot be undone. Type <strong>{name}</strong> to confirm.</p>
+    <label>Character name<input value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus /></label>
+    <div className="modal-actions"><button className="button ghost" onClick={onClose}>Cancel</button><button className="button destructive" disabled={typed !== name} onClick={() => { onBusy(true); onClose(); fetchNui("multichar:delete", { citizenid: character.citizenid }); }}><Trash2 size={16} />Delete forever</button></div>
+  </div></div>;
+}
+
+function SpawnScreen({ location, index, count, busy, previewing, traveling, onMove, onAccept }: { location: SpawnLocation | null; index: number; count: number; busy: boolean; previewing: boolean; traveling: boolean; onMove: (delta: number) => void; onAccept: () => void }) {
+  return <>
+    <header className="topbar"><div><span className="eyebrow">ARRIVAL</span><h1>Where do you wake up?</h1></div><span className="mandatory-chip">Selection required</span></header>
+    {traveling && <div className="travel-indicator" role="status"><Plane size={15} /><span>Flying to <strong>{location?.label}</strong></span></div>}
+    <section className="carousel-shell spawn-carousel">
+      <button className="nav-button" disabled={count <= 1 || traveling || previewing} onClick={() => onMove(-1)} aria-label="Previous location"><ChevronLeft /></button>
+      <div className="identity-card spawn-card">
+        <div className="location-icon"><MapPin size={22} /></div>
+        <div className="identity-copy"><span className="eyebrow">LOCATION {count ? index + 1 : 0} OF {count}</span><h2>{location?.label || "Loading locations"}</h2><p>{location?.description || "Preparing a safe arrival point…"}</p></div>
+        <button className="button primary" disabled={!location || busy || previewing || traveling} onClick={onAccept}>{busy ? <LoaderCircle className="spin" size={17} /> : <MapPin size={17} />}Spawn here</button>
+      </div>
+      <button className="nav-button" disabled={count <= 1 || traveling || previewing} onClick={() => onMove(1)} aria-label="Next location"><ChevronRight /></button>
+    </section>
+    <div className="key-hints"><kbd>←</kbd><kbd>→</kbd><span>{traveling ? "Flying to location…" : "Preview location"}</span><kbd>Enter</kbd><span>Spawn</span></div>
+  </>;
+}
+
+const creatorAction = (action: string, payload: unknown = {}) => fetchNui("multichar:creator:action", { action, payload });
+
+function CreatorScreen({ draft, scenes, cursor, exported }: { draft: SceneDraft; scenes: Record<string, SceneDraft>; cursor: boolean; exported: string | null }) {
+  const [cueText, setCueText] = useState('{"at":5200,"type":"camera","camera":"establishing","transitionMs":2400}');
+  const [selectorText, setSelectorText] = useState(JSON.stringify(draft.selectors ?? [], null, 2));
+  const [scrub, setScrub] = useState(0);
+  useEffect(() => setSelectorText(JSON.stringify(draft.selectors ?? [], null, 2)), [draft.id, draft.selectors]);
+  const sceneOptions = useMemo(() => Object.keys(scenes).sort(), [scenes]);
+  return <div className="creator-shell">
+    <header className="creator-top panel">
+      <div><span className="eyebrow">CINEMATIC TOOLS</span><h2>Scene Studio</h2></div>
+      <select value={scenes[draft.id] ? draft.id : ""} onChange={(event) => event.target.value && creatorAction("load", { id: event.target.value })}><option value="">Unsaved draft</option>{sceneOptions.map((id) => <option key={id} value={id}>{scenes[id].label} · {id}</option>)}</select>
+      <button className="button ghost" onClick={() => creatorAction("new")}><Plus size={15} />New</button>
+      <button className="button ghost" onClick={() => creatorAction("duplicate")}><Copy size={15} />Duplicate</button>
+      <button className={`button ${cursor ? "primary" : "ghost"}`} onClick={() => creatorAction("toggleMode")}><MousePointer2 size={15} />{cursor ? "Cursor" : "Freecam"}</button>
+      <button className="icon-button" onClick={() => creatorAction("close")}><X /></button>
+    </header>
+    {!cursor && <div className="freecam-hud"><Move3d /><strong>Freecam active</strong><span>WASD move · Q/E vertical · Shift boost · mouse look · Tab cursor</span></div>}
+    <aside className="creator-left panel">
+      <CreatorSection title="Scene" icon={<Clapperboard size={15} />}>
+        <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { creatorAction("metadata", { id: form.get("id"), label: form.get("label"), priority: Number(form.get("priority")), selectors: JSON.parse(selectorText) }); } catch { /* Lua returns useful validation on preview */ } }}>
+          <label>ID<input name="id" defaultValue={draft.id} /></label><label>Label<input name="label" defaultValue={draft.label} /></label><label>Priority<input name="priority" type="number" defaultValue={draft.priority} /></label>
+          <label>Selectors JSON<textarea rows={4} value={selectorText} onChange={(event) => setSelectorText(event.target.value)} /></label><button className="mini-button"><Save size={13} />Apply metadata</button>
+        </form>
+      </CreatorSection>
+      <CreatorSection title="Environment" icon={<Sparkles size={15} />}>
+        <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const strength = String(form.get("strength") ?? ""); creatorAction("environment", { hour: Number(form.get("hour")), minute: Number(form.get("minute")), weather: form.get("weather"), timecycle: form.get("timecycle") || undefined, strength: strength === "" ? undefined : Number(strength) }); }}>
+          <div className="field-grid"><label>Hour<input name="hour" type="number" min="0" max="23" defaultValue={Number(draft.environment?.hour ?? 18)} /></label><label>Minute<input name="minute" type="number" min="0" max="59" defaultValue={Number(draft.environment?.minute ?? 0)} /></label></div>
+          <label>Weather<input name="weather" defaultValue={String(draft.environment?.weather ?? "CLEAR")} /></label><label>Timecycle<input name="timecycle" defaultValue={String(draft.environment?.timecycle ?? "")} /></label><label>Strength<input name="strength" type="number" step="0.05" min="0" max="1" defaultValue={Number(draft.environment?.strength ?? 0)} /></label><button className="mini-button"><Save size={13} />Apply environment</button>
+        </form>
+      </CreatorSection>
+      <button className="wide-tool" onClick={() => creatorAction("setAnchor")}><MapPin size={15} />Set anchor at crosshair</button>
+      <button className="wide-tool" onClick={() => creatorAction("placeCharacter")}><Crosshair size={15} />Place character at crosshair</button>
+    </aside>
+    <aside className="creator-right panel">
+      <CreatorSection title={`Entities · ${draft.entities.length}`} icon={<Box size={15} />}>
+        <div className="object-list">{draft.entities.map((entity, index) => <div className="object-editor" key={entity.id}>
+          <div className="object-row"><span><strong>{entity.id}</strong><small>{entity.type} · {String(entity.model)}</small></span><div className="row-tools">
+            <button aria-label={`Move ${entity.id} up`} disabled={index === 0} onClick={() => creatorAction("reorderEntity", { index: index + 1, delta: -1 })}><ChevronUp size={13} /></button>
+            <button aria-label={`Move ${entity.id} down`} disabled={index === draft.entities.length - 1} onClick={() => creatorAction("reorderEntity", { index: index + 1, delta: 1 })}><ChevronDown size={13} /></button>
+            <button aria-label={`Delete ${entity.id}`} onClick={() => creatorAction("removeEntity", { id: entity.id })}><Trash2 size={13} /></button>
+          </div></div>
+          <JsonEditor label="Edit entity data" value={entity} onSave={(value) => creatorAction("replaceEntity", { originalId: entity.id, value })} />
+        </div>)}</div>
+        <form className="inline-add" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); creatorAction("addEntity", { id: form.get("id"), type: form.get("type"), model: form.get("model") }); }}>
+          <input name="id" placeholder="unique_id" required /><select name="type"><option value="ped">NPC</option><option value="vehicle">Vehicle</option><option value="prop">Prop</option></select><input name="model" placeholder="model name" required /><button className="mini-button"><Crosshair size={13} />Place</button>
+        </form>
+      </CreatorSection>
+      <CreatorSection title={`Cameras · ${draft.cameras.length}`} icon={<Camera size={15} />}>
+        <div className="object-list">{draft.cameras.map((camera, index) => <div className="object-editor" key={camera.id}>
+          <div className="object-row"><span><strong>{camera.id}</strong><small>FOV {String(camera.fov ?? 45)}</small></span><div className="row-tools">
+            <button aria-label={`Move ${camera.id} up`} disabled={index === 0} onClick={() => creatorAction("reorderCamera", { index: index + 1, delta: -1 })}><ChevronUp size={13} /></button>
+            <button aria-label={`Move ${camera.id} down`} disabled={index === draft.cameras.length - 1} onClick={() => creatorAction("reorderCamera", { index: index + 1, delta: 1 })}><ChevronDown size={13} /></button>
+            <button aria-label={`Delete ${camera.id}`} disabled={draft.cameras.length <= 1} onClick={() => creatorAction("removeCamera", { id: camera.id })}><Trash2 size={13} /></button>
+          </div></div>
+          <JsonEditor label="Edit camera data" value={camera} onSave={(value) => creatorAction("replaceCamera", { index: index + 1, value })} />
+        </div>)}</div>
+        <form className="inline-add" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); creatorAction("captureCamera", { id: form.get("id"), fov: Number(form.get("fov")), transitionMs: 900 }); }}><input name="id" placeholder="shot_id" required /><input name="fov" type="number" min="10" max="100" defaultValue="45" /><button className="mini-button"><Camera size={13} />Capture</button></form>
+      </CreatorSection>
+    </aside>
+    <section className="timeline panel">
+      <div className="timeline-heading"><span><Clapperboard size={15} /><strong>Timeline</strong></span><label>Duration <input type="number" defaultValue={draft.timeline.durationMs} onBlur={(event) => creatorAction("timeline", { durationMs: Number(event.target.value), loop: draft.timeline.loop })} /></label><label className="check"><input type="checkbox" checked={draft.timeline.loop} onChange={(event) => creatorAction("timeline", { durationMs: draft.timeline.durationMs, loop: event.target.checked })} />Loop</label></div>
+      <input className="scrubber" type="range" min="0" max={draft.timeline.durationMs || 1} value={scrub} onChange={(event) => { const at = Number(event.target.value); setScrub(at); creatorAction("scrub", { at }); }} />
+      <div className="cue-list">{draft.timeline.cues.map((cue, i) => <div className="cue-editor" key={`${String(cue.type)}-${i}`}>
+        <div className="cue"><b>{Number(cue.at ?? 0) / 1000}s</b><span>{String(cue.type)}</span><div className="row-tools">
+          <button aria-label="Move cue up" disabled={i === 0} onClick={() => creatorAction("reorderCue", { index: i + 1, delta: -1 })}><ChevronUp size={12} /></button>
+          <button aria-label="Move cue down" disabled={i === draft.timeline.cues.length - 1} onClick={() => creatorAction("reorderCue", { index: i + 1, delta: 1 })}><ChevronDown size={12} /></button>
+          <button aria-label="Delete cue" onClick={() => creatorAction("removeCue", { index: i + 1 })}><X size={12} /></button>
+        </div></div>
+        <JsonEditor label="Edit cue data" value={cue} onSave={(value) => creatorAction("replaceCue", { index: i + 1, value })} />
+      </div>)}</div>
+      <div className="cue-add"><input value={cueText} onChange={(event) => setCueText(event.target.value)} /><button className="mini-button" onClick={() => { try { creatorAction("addCue", JSON.parse(cueText)); } catch { /* keep editable */ } }}><Plus size={13} />Add cue JSON</button></div>
+    </section>
+    <footer className="creator-actions panel"><button className="button ghost" onClick={() => creatorAction("validate")}><CheckCircle2 size={15} />Validate</button><button className="button ghost" onClick={() => creatorAction("preview")}><Play size={15} />Play timeline</button><button className="button ghost" onClick={() => creatorAction("exportRegister")}><Copy size={15} />Copy registration</button><button className="button primary" onClick={() => creatorAction("exportConfig")}><Copy size={15} />Copy config</button>{exported && <span className="export-toast">{exported}</span>}</footer>
+  </div>;
+}
+
+function CreatorSection({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
+  return <section className="creator-section"><h3>{icon}{title}</h3>{children}</section>;
+}
+
+function JsonEditor({ label, value, onSave }: { label: string; value: unknown; onSave: (value: Record<string, unknown>) => void }) {
+  const serialized = JSON.stringify(value, null, 2);
+  const [text, setText] = useState(serialized);
+  const [error, setError] = useState(false);
+  useEffect(() => { setText(serialized); setError(false); }, [serialized]);
+  return <details className="json-editor"><summary>{label}</summary><textarea rows={7} value={text} onChange={(event) => setText(event.target.value)} />{error && <small>Enter a valid JSON object.</small>}<button className="mini-button" onClick={() => { try { const parsed = JSON.parse(text); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(); setError(false); onSave(parsed); } catch { setError(true); } }}><Save size={12} />Apply JSON</button></details>;
+}

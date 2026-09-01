@@ -1,180 +1,265 @@
--- Custom full-screen NUI: this resource owns its own frame (html/), so it
--- talks to it with the raw natives directly. QB.nui.send/registerCallback
--- would dispatch into qblib's own resource VM via the cross-resource export
--- call and so target QBLIB's frame, not this one -- QB.theme.tokens() is
--- still safe to call either way since it's pure Lua math with no NUI
--- natives involved.
---
--- Speaks the REAL legacy qb-multicharacter wire protocol directly (net
--- events + QB.callback names, verified against
--- github.com/qbcore-framework/qb-multicharacter) instead of qbcore's own
--- modern qbcore:server:*/qbcore:client:* pair, so any third-party resource
--- built against real QBCore keeps working against this one. NUI action/
--- callback names (multichar:*) are internal and unchanged -- RegisterNUICallback
--- is scoped to this resource's own shipped HTML, never cross-resource
--- observable, so matching real qb-multicharacter's NUI callback names
--- wouldn't buy any compat; the net events/QB.callback names are the actual
--- cross-resource surface, and those are matched exactly.
+-- Character-select orchestration. The NUI owns presentation, SceneRuntime
+-- owns the disposable world, and qbcore's legacy compatibility events remain
+-- the only character lifecycle transport exposed to other resources.
 
-local lastCharacters = {}
+local characters = {}
+local charactersById = {}
 local maxCharacters = 5
+local sceneCatalog = {}
+local selectedCharacter = nil
+local previewGeneration = 0
+local currentMode = nil
+local nuiVisible = false
 
--- Suppress qbcore's built-in auto-select/auto-create flow
--- (qbcore/modules/multichar/client.lua) -- must run before its 500ms grace
--- window elapses, which this does trivially since it's top-level code that
--- runs the moment this resource starts. This is a real cross-resource export
--- call, not a `_G` flag -- every resource gets its own isolated Lua VM, so a
--- `_G` write here would never actually be visible to qbcore's own script.
--- Still required even though this file no longer speaks qbcore's own
--- qbcore:server:*/qbcore:client:* pair: qbcore's default flow re-arms itself
--- via TriggerServerEvent('qbcore:server:requestCharacters') on its own timer
--- regardless of what this resource does, unless claimed.
 exports.qbcore:claimUI()
 
----Smallest slot in 1..maxCharacters not occupied by an existing character.
----@param characters table[]
----@return integer|nil
-local function nextFreeSlot(characters)
+local function send(action, data)
+    SendNUIMessage({ action = action, data = data })
+end
+
+local function nextFreeSlot(list)
     local taken = {}
-    for _, character in ipairs(characters) do
-        taken[character.cid] = true
-    end
-    for cid = 1, maxCharacters do
-        if not taken[cid] then return cid end
-    end
+    for _, character in ipairs(list) do taken[character.cid] = true end
+    for cid = 1, maxCharacters do if not taken[cid] then return cid end end
     return nil
 end
 
-local function closeUI()
+local function setCharacters(list)
+    characters, charactersById = list or {}, {}
+    for _, character in ipairs(characters) do charactersById[character.citizenid] = character end
+end
+
+local function fallbackModel(character)
+    return character and character.charinfo and tonumber(character.charinfo.gender) == 1
+        and 'mp_f_freemode_01' or 'mp_m_freemode_01'
+end
+
+local function previewCharacter(citizenid)
+    local character = charactersById[citizenid]
+    if not character then return end
+    selectedCharacter = character
+    previewGeneration = previewGeneration + 1
+    local generation = previewGeneration
+    send('multichar:previewLoading', { citizenid = citizenid })
+
+    CreateThread(function()
+        local model, skin
+        local ok = pcall(function()
+            model, skin = QB.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
+        end)
+        if generation ~= previewGeneration then return end
+        if not ok or type(model) ~= 'string' then model, skin = fallbackModel(character), {} end
+        local scene, sceneId = SceneSchema.resolve(sceneCatalog, character, Config.defaultScene)
+        local loaded, err = SceneRuntime.loadCharacter(scene, model, skin)
+        if not loaded and sceneId ~= Config.defaultScene then
+            sceneId, scene = Config.defaultScene, sceneCatalog[Config.defaultScene]
+            loaded, err = SceneRuntime.loadCharacter(scene, model, skin)
+        end
+        if not loaded then
+            model, skin = fallbackModel(character), {}
+            sceneId, scene = Config.defaultScene, sceneCatalog[Config.defaultScene]
+            loaded, err = SceneRuntime.loadCharacter(scene, model, skin)
+        end
+        if generation ~= previewGeneration then return end
+        send('multichar:previewReady', {
+            citizenid = citizenid,
+            scene = sceneId,
+            ok = loaded == true,
+            error = loaded and nil or err,
+        })
+    end)
+end
+
+local function leaveServerMode()
+    local ok, result = pcall(function() return QB.callback.trigger('qbmultichar:server:leaveMode') end)
+    return ok and result == true
+end
+
+local function closeNuiOnly()
+    nuiVisible = false
+    currentMode = nil
     SetNuiFocus(false, false)
-    SendNUIMessage({ action = 'multichar:close' })
+    send('multichar:close')
 end
 
--- The point every "you're now in the world" path converges on: teleport,
--- tell the server the legacy way, drop the loading screen, close this UI.
-local function finishAtDefaultSpawn()
-    local ped = PlayerPedId()
-    local spawn = Config.defaultSpawn
-    SetEntityCoords(ped, spawn.x, spawn.y, spawn.z, false, false, false, true)
-    SetEntityHeading(ped, spawn.w)
-    NetworkResurrectLocalPlayer(spawn.x, spawn.y, spawn.z, spawn.w, GetEntityModel(ped), false)
-    TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
-    ShutdownLoadingScreen()
-    ShutdownLoadingScreenNui()
-    DoScreenFadeIn(500)
-    closeUI()
-end
-
-local function refreshCharacters()
-    local characters = QB.callback.trigger('qb-multicharacter:server:setupCharacters') or {}
-    maxCharacters = QB.callback.trigger('qb-multicharacter:server:GetNumberOfCharacters') or maxCharacters
-    lastCharacters = characters
-
-    -- The "shutdown the loading screen after all chars fetched" behavior --
-    -- safe to call even if something else already shut it down (e.g. a bare
-    -- server's spawnmanager on a previous connect). ShutdownLoadingScreen()
-    -- alone only tears down the loadingscreen resource's NUI page; with
-    -- loadscreen_manual_shutdown 'yes' (qbloading/fxmanifest.lua) the
-    -- client stays on a black/stuck screen until ShutdownLoadingScreenNui()
-    -- and a fade-in are also fired.
-    ShutdownLoadingScreen()
-    ShutdownLoadingScreenNui()
-    DoScreenFadeIn(500)
-
-    SetNuiFocus(true, true)
-    SendNUIMessage({
-        action = 'multichar:show',
-        data = { characters = characters, maxCharacters = maxCharacters },
-    })
-end
-
--- Real qb-multicharacter events
-
-RegisterNetEvent('qb-multicharacter:client:chooseChar', refreshCharacters)
-
-RegisterNetEvent('qb-multicharacter:client:closeNUI', closeUI)
-
-RegisterNetEvent('qb-multicharacter:client:closeNUIdefault', finishAtDefaultSpawn)
-
-RegisterNetEvent('qb-multicharacter:client:spawnLastLocation', function(coords, _cData)
+local function finishAt(coords)
+    DoScreenFadeOut(250)
+    local deadline = GetGameTimer() + 1000
+    while not IsScreenFadedOut() and GetGameTimer() < deadline do Wait(0) end
+    SceneRuntime.endMode()
+    leaveServerMode()
     local ped = PlayerPedId()
     SetEntityCoords(ped, coords.x, coords.y, coords.z, false, false, false, true)
     SetEntityHeading(ped, coords.w or coords.h or 0.0)
-    NetworkResurrectLocalPlayer(coords.x, coords.y, coords.z, coords.w or coords.h or 0.0, GetEntityModel(ped), false)
+    NetworkResurrectLocalPlayer(coords.x, coords.y, coords.z, coords.w or coords.h or 0.0, 0, false)
+    SetEntityVisible(ped, true, false)
+    SetEntityCollision(ped, true, true)
+    FreezeEntityPosition(ped, false)
     TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
     ShutdownLoadingScreen()
     ShutdownLoadingScreenNui()
+    closeNuiOnly()
     DoScreenFadeIn(500)
-    closeUI()
+end
+
+-- Shared with spawn.lua; one finalization path prevents cleanup differences
+-- between fixed, last-location, and future house spawns.
+function MulticharFinishSpawn(coords)
+    finishAt(coords)
+end
+
+function MulticharSetClientMode(mode, visible)
+    currentMode = mode
+    nuiVisible = visible ~= false
+end
+
+local function refreshCharacters()
+    local entered, enterErr = QB.callback.trigger('qbmultichar:server:enterMode', 'selection')
+    if not entered then
+        print(('[qbmultichar] could not enter selection mode: %s'):format(tostring(enterErr)))
+        return
+    end
+    currentMode = 'selection'
+    SceneRuntime.beginMode()
+
+    local fetched = QB.callback.trigger('qb-multicharacter:server:setupCharacters') or {}
+    maxCharacters = QB.callback.trigger('qb-multicharacter:server:GetNumberOfCharacters') or maxCharacters
+    local fetchedScenes = QB.callback.trigger('qbmultichar:server:getScenes') or {}
+    sceneCatalog = type(fetchedScenes) == 'table' and fetchedScenes or {}
+    setCharacters(type(fetched) == 'table' and fetched or {})
+
+    ShutdownLoadingScreen()
+    ShutdownLoadingScreenNui()
+    DoScreenFadeIn(400)
+    nuiVisible = true
+    SetNuiFocus(true, true)
+    send('multichar:show', { characters = characters, maxCharacters = maxCharacters })
+end
+
+RegisterNetEvent('qb-multicharacter:client:chooseChar', refreshCharacters)
+
+RegisterNetEvent('qb-multicharacter:client:closeNUI', function()
+    SceneRuntime.endMode()
+    leaveServerMode()
+    closeNuiOnly()
 end)
 
--- Local-only UX event (NOT part of the legacy wire protocol) -- qbcore's
--- compat (compat/server/qb-multicharacter.lua) fires this on a failed
--- select/create instead of silently doing nothing.
+RegisterNetEvent('qb-multicharacter:client:closeNUIdefault', function()
+    if type(MulticharOpenNewSpawn) == 'function' and MulticharOpenNewSpawn() then return end
+    -- Defensive compatibility fallback if spawn.lua failed to initialize.
+    finishAt(Config.defaultSpawn)
+end)
+
+RegisterNetEvent('qb-multicharacter:client:spawnLastLocation', function(coords)
+    finishAt(coords)
+end)
+
 RegisterNetEvent('multichar:client:selectFailed', function(err)
-    SendNUIMessage({ action = 'multichar:error', data = err or 'Something went wrong.' })
+    send('multichar:error', err or 'Something went wrong.')
 end)
 
--- NUI callbacks
+RegisterNetEvent('qbmultichar:client:sceneUpsert', function(id, definition)
+    local scene = SceneSchema.validate(id, definition, Config.sceneLimits)
+    if not scene then return end
+    sceneCatalog[id] = scene
+    if currentMode == 'selection' and selectedCharacter then previewCharacter(selectedCharacter.citizenid) end
+end)
+
+RegisterNetEvent('qbmultichar:client:sceneRemove', function(id)
+    sceneCatalog[id] = nil
+    if currentMode == 'selection' and selectedCharacter then previewCharacter(selectedCharacter.citizenid) end
+end)
 
 RegisterNUICallback('multichar:getTheme', function(_, cb)
-    cb(QB.theme.tokens())
+    local ok, tokens = pcall(function() return QB.theme.tokens() end)
+    cb(ok and tokens or {})
+end)
+
+RegisterNUICallback('multichar:preview', function(data, cb)
+    local citizenid = type(data) == 'table' and data.citizenid
+    if type(citizenid) == 'string' and charactersById[citizenid] then previewCharacter(citizenid) end
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('multichar:createPreview', function(data, cb)
+    previewGeneration = previewGeneration + 1
+    local generation = previewGeneration
+    local model = tonumber(data and data.gender) == 1 and 'mp_f_freemode_01' or 'mp_m_freemode_01'
+    local scene = sceneCatalog[Config.defaultScene]
+    CreateThread(function()
+        local ok, err = SceneRuntime.loadCharacter(scene, model, {})
+        if generation ~= previewGeneration then return end
+        send('multichar:previewReady', { citizenid = 'new', scene = Config.defaultScene, ok = ok, error = err })
+    end)
+    cb({ ok = true })
 end)
 
 RegisterNUICallback('multichar:select', function(data, cb)
-    TriggerServerEvent('qb-multicharacter:server:loadUserData', { citizenid = data.citizenid })
-    cb({})
+    local citizenid = type(data) == 'table' and data.citizenid
+    if type(citizenid) ~= 'string' or not charactersById[citizenid] then cb({ ok = false }); return end
+    TriggerServerEvent('qb-multicharacter:server:loadUserData', { citizenid = citizenid })
+    cb({ ok = true })
 end)
 
 RegisterNUICallback('multichar:create', function(data, cb)
-    -- Immediate feedback without a round-trip if the client's own copy of
-    -- maxCharacters (refreshed from the server on every list request) is
-    -- already exhausted. Not the enforcement point, though: qbcore's
-    -- Core.player.createCharacter is the actual authority and computes its
-    -- own free slot server-side -- no cid is sent here, since a client-
-    -- supplied one would only ever be a guess the server already distrusts.
-    if not nextFreeSlot(lastCharacters) then
-        SendNUIMessage({ action = 'multichar:error', data = 'You have reached the maximum number of characters.' })
-        cb({})
-        return
+    if not nextFreeSlot(characters) then
+        send('multichar:error', 'You have reached the maximum number of characters.')
+        cb({ ok = false }); return
     end
-
+    data = type(data) == 'table' and data or {}
     TriggerServerEvent('qb-multicharacter:server:createCharacter', {
         firstname = data.firstname,
         lastname = data.lastname,
-        birthdate = '1990-01-01',
-        gender = 0,
-        nationality = 'USA',
-        phone = tostring(math.random(1000000, 9999999)),
+        birthdate = data.birthdate,
+        gender = tonumber(data.gender),
+        nationality = data.nationality,
     })
-    cb({})
+    cb({ ok = true })
 end)
 
 RegisterNUICallback('multichar:delete', function(data, cb)
-    local deleted, err = QB.callback.trigger('qb-multicharacter:server:deleteCharacter', data.citizenid)
+    local citizenid = type(data) == 'table' and data.citizenid
+    if type(citizenid) ~= 'string' or not charactersById[citizenid] then cb({ ok = false }); return end
+    local deleted, err = QB.callback.trigger('qb-multicharacter:server:deleteCharacter', citizenid)
     if not deleted then
-        SendNUIMessage({ action = 'multichar:error', data = err or 'Could not delete that character.' })
-        cb({ ok = false })
-        return
+        send('multichar:error', err or 'Could not delete that character.')
+        cb({ ok = false }); return
     end
     refreshCharacters()
     cb({ ok = true })
 end)
 
-RegisterNUICallback('multichar:close', function(_, cb)
-    SetNuiFocus(false, false)
-    cb({})
+RegisterNUICallback('multichar:disconnect', function(_, cb)
+    TriggerServerEvent('qb-multicharacter:server:disconnect', 'Disconnected from character selection.')
+    cb({ ok = true })
 end)
 
--- Kick off the flow once the session is up -- matches real qb-multicharacter's
--- own NetworkIsSessionStarted() gate (this used to be a flat
--- TriggerServerEvent('qbcore:server:requestCharacters') at file scope, which
--- ran before the network session existed).
+CreateThread(function()
+    while true do
+        if nuiVisible and (currentMode == 'selection' or currentMode == 'spawn') then
+            if IsDisabledControlJustPressed(0, 174) then send('multichar:input', { key = 'left' }) end
+            if IsDisabledControlJustPressed(0, 175) then send('multichar:input', { key = 'right' }) end
+            if IsDisabledControlJustPressed(0, 201) then send('multichar:input', { key = 'accept' }) end
+            Wait(0)
+        else
+            Wait(250)
+        end
+    end
+end)
+
 CreateThread(function()
     while not NetworkIsSessionStarted() do Wait(0) end
     TriggerEvent('qb-multicharacter:client:chooseChar')
 end)
 
--- Live-push path for a theme change while the UI is already open; the page
--- also pulls this once on mount via multichar:getTheme.
-SendNUIMessage({ action = 'multichar:theme', data = QB.theme.tokens() })
+CreateThread(function()
+    local ok, tokens = pcall(function() return QB.theme.tokens() end)
+    if ok then send('multichar:theme', tokens) end
+end)
+
+AddEventHandler('onClientResourceStop', function(resource)
+    if resource ~= GetCurrentResourceName() then return end
+    previewGeneration = previewGeneration + 1
+    nuiVisible, currentMode = false, nil
+    SetNuiFocus(false, false)
+end)

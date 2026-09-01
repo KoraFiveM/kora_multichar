@@ -1,69 +1,109 @@
--- The merged qb-spawn client half. Kept in its own file, talking to the rest
--- of this resource ONLY via the real cross-resource qb-spawn:client:* net
--- events and qb-spawn:server:* callback -- the same way the two real,
--- separate resources talk to each other -- so this stays a faithful,
--- decoupled compat surface rather than a hidden internal shortcut.
---
--- This is also the only place in the whole codebase that ever moves the
--- player's ped after character select (confirmed at design time: no
--- spawnmanager integration exists anywhere). Real qb-spawn/qb-multicharacter
--- don't use spawnmanager either -- they hand-roll SetEntityCoords /
--- NetworkResurrectLocalPlayer / fade calls directly, matched here.
+-- Live-location spawn carousel. The character is already adopted by qbcore at
+-- this point but remains hidden in qbmultichar's selection bucket until a
+-- destination is confirmed.
 
-local lastCData = nil
+local spawnLocations = {}
+local spawnById = {}
 
-local function finishSpawn(coords)
-    local ped = PlayerPedId()
-    SetEntityCoords(ped, coords.x, coords.y, coords.z, false, false, false, true)
-    SetEntityHeading(ped, coords.w or coords.h or 0.0)
-    NetworkResurrectLocalPlayer(coords.x, coords.y, coords.z, coords.w or coords.h or 0.0, GetEntityModel(ped), false)
-    TriggerServerEvent('QBCore:Server:OnPlayerLoaded')
+local function send(action, data)
+    SendNUIMessage({ action = action, data = data })
+end
 
-    -- Same 3-call sequence as client.lua's character-list shutdown -- safe to
-    -- call again here (loadscreen_manual_shutdown 'yes' means only the FIRST
-    -- call actually does anything; a repeat is a harmless no-op), and this is
-    -- genuinely the point at which the player is finally in the world.
-    ShutdownLoadingScreen()
-    ShutdownLoadingScreenNui()
-    DoScreenFadeIn(500)
+local function addLocation(location)
+    if not location or not location.id or not location.coords then return end
+    spawnLocations[#spawnLocations + 1] = location
+    spawnById[location.id] = location
+end
 
-    SetNuiFocus(false, false)
-    SendNUIMessage({ action = 'multichar:spawn:show', data = { visible = false } })
+local function normalizeCoords(value)
+    if type(value) ~= 'table' and type(value) ~= 'vector3' and type(value) ~= 'vector4' then return nil end
+    if not value.x or not value.y or not value.z then return nil end
+    return vector4(value.x + 0.0, value.y + 0.0, value.z + 0.0, value.w or value.h or 0.0)
+end
+
+local function buildLocations(cData, houses, isNew)
+    spawnLocations, spawnById = {}, {}
+    local current = isNew and Config.defaultSpawn or (cData and normalizeCoords(cData.position))
+    if current then
+        addLocation({
+            id = 'current', typeLoc = 'current', label = isNew and 'First Arrival' or 'Last Location',
+            description = isNew and 'Begin your new story at the city welcome point.' or 'Return to the exact place this character was last seen.',
+            coords = current,
+        })
+    end
+    for id, configured in pairs(Config.spawns) do
+        addLocation({
+            id = id, typeLoc = 'normal', spawnloc = id,
+            label = configured.label or id, description = configured.description,
+            coords = configured.coords, preview = configured.preview,
+        })
+    end
+    for key, house in pairs(type(houses) == 'table' and houses or {}) do
+        local coords = normalizeCoords(house.coords or house.location or house)
+        if coords then
+            addLocation({
+                id = ('house:%s'):format(tostring(house.id or key)), typeLoc = 'house', spawnloc = house.id or key,
+                label = house.label or house.name or 'Owned Property',
+                description = 'Spawn at your owned property.', coords = coords,
+            })
+        end
+    end
+    table.sort(spawnLocations, function(a, b)
+        if a.id == 'current' then return true end
+        if b.id == 'current' then return false end
+        return a.label < b.label
+    end)
+end
+
+RegisterNetEvent('qb-spawn:client:setupSpawns', function(cData, new, _apps)
+    if new then return end
+    local houses = QB.callback.trigger('qb-spawn:server:getOwnedHouses', cData and cData.citizenid) or {}
+    buildLocations(cData, houses, false)
+    send('multichar:spawn:locations', { locations = spawnLocations, isNew = false })
+end)
+
+local function openSpawnSelection(isNew)
+    local entered, err = QB.callback.trigger('qbmultichar:server:enterMode', 'spawn')
+    if not entered then
+        send('multichar:error', err or 'Could not open spawn selection.')
+        return
+    end
+    MulticharSetClientMode('spawn', true)
+    SetNuiFocus(true, true)
+    send('multichar:spawn:show', { visible = true, isNew = isNew == true })
+    return true
 end
 
 RegisterNetEvent('qb-spawn:client:openUI', function(value)
-    SendNUIMessage({ action = 'multichar:spawn:show', data = { visible = value } })
-    SetNuiFocus(value, value)
+    if value == true then openSpawnSelection(false) end
 end)
 
-RegisterNetEvent('qb-spawn:client:setupSpawns', function(cData, new, _apps)
-    -- `new`/`apps` (apartments path) never fire here -- qbcore's compat
-    -- (compat/server/qb-multicharacter.lua) never takes that branch, since no
-    -- apartments module exists in this codebase.
-    if new then return end
+function MulticharOpenNewSpawn()
+    buildLocations(nil, nil, true)
+    send('multichar:spawn:locations', { locations = spawnLocations, isNew = true })
+    return openSpawnSelection(true)
+end
 
-    lastCData = cData
-    local houses = QB.callback.trigger('qb-spawn:server:getOwnedHouses', cData and cData.citizenid) or {}
-    SendNUIMessage({
-        action = 'multichar:spawn:locations',
-        data = { locations = Config.spawns, houses = houses, isNew = false },
-    })
-end)
-
-RegisterNUICallback('multichar:spawn:exit', function(_, cb)
-    SetNuiFocus(false, false)
-    SendNUIMessage({ action = 'multichar:spawn:show', data = { visible = false } })
-    cb({})
+RegisterNUICallback('multichar:spawn:focus', function(data, cb)
+    local location = spawnById[type(data) == 'table' and data.id or nil]
+    local ok, streamed = false, false
+    if location then ok, streamed = SceneRuntime.previewSpawn(location) end
+    cb({ ok = ok, streamed = streamed })
 end)
 
 RegisterNUICallback('multichar:spawn:choose', function(data, cb)
-    if data.typeLoc == 'current' and lastCData and lastCData.position then
-        finishSpawn(lastCData.position)
-    elseif data.typeLoc == 'normal' and Config.spawns[data.spawnloc] then
-        finishSpawn(Config.spawns[data.spawnloc].coords)
-    end
-    -- 'house'/'appartment': unreachable -- qb-spawn:server:getOwnedHouses
-    -- (qbcore/compat/server/qb-spawn.lua) always answers {}, so the NUI never
-    -- offers them; a stray call is a defensive no-op, not an error.
-    cb({})
+    local location = spawnById[type(data) == 'table' and data.id or nil]
+    if not location then cb({ ok = false }); return end
+    -- House spawning becomes reachable automatically when qb-houses returns
+    -- coordinates. This merged resource has no house-interior handoff, so the
+    -- safe compatible behavior is to land at those authoritative coordinates.
+    MulticharFinishSpawn(location.coords)
+    cb({ ok = true })
+end)
+
+RegisterNUICallback('multichar:spawn:exit', function(_, cb)
+    -- Once qbcore has adopted a character there is no safe "back" operation;
+    -- force an explicit destination instead of stranding a hidden live player.
+    send('multichar:error', 'Choose a spawn location to continue.')
+    cb({ ok = false, mandatory = true })
 end)
