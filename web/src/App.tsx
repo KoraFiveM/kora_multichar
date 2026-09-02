@@ -74,8 +74,6 @@ export function App() {
       } else if (action === "multichar:spawn:show" && (data as { visible?: boolean })?.visible) {
         spawnCameraReady.current = false;
         setStage("spawn"); setBusy(false); setSpawnIndex(0); setPreviewing(true); setSpawnTraveling(false);
-      } else if (action === "multichar:input") {
-        window.dispatchEvent(new CustomEvent("qbmultichar-input", { detail: data }));
       } else if (action === "multichar:creator:show") {
         const payload = data as CreatorPayload;
         setCreatorDraft(payload.draft ?? null); setCreatorScenes(payload.scenes ?? {}); setCreatorCursor(payload.cursor !== false); setStage("creator");
@@ -147,12 +145,6 @@ export function App() {
   };
 
   useEffect(() => {
-    const controller = (event: Event) => {
-      const key = (event as CustomEvent<{ key?: string }>).detail?.key;
-      if (key === "left") move(-1);
-      else if (key === "right") move(1);
-      else if (key === "accept") accept();
-    };
     const keyboard = (event: KeyboardEvent) => {
       if (stage === "hidden" || stage === "creator" || creating || deleting || ["INPUT", "TEXTAREA", "SELECT"].includes((event.target as HTMLElement)?.tagName)) return;
       if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") move(-1);
@@ -160,9 +152,8 @@ export function App() {
       else if (event.key === "Enter") accept();
       else if (event.key === "Escape" && stage === "spawn") fetchNui("multichar:spawn:exit");
     };
-    window.addEventListener("qbmultichar-input", controller);
     window.addEventListener("keydown", keyboard);
-    return () => { window.removeEventListener("qbmultichar-input", controller); window.removeEventListener("keydown", keyboard); };
+    return () => window.removeEventListener("keydown", keyboard);
   });
 
   useEffect(() => {

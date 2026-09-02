@@ -94,14 +94,14 @@ describe('character selection', () => {
     });
   });
 
-  it('relays controller navigation and acceptance to the active character', () => {
+  it('handles focused NUI keyboard navigation and acceptance', () => {
     const bob = { ...jane, citizenid: 'BOB2', cid: 2, charinfo: { ...jane.charinfo, firstname: 'Bob' } };
     render(<App />);
     message('multichar:show', { characters: [jane, bob], maxCharacters: 2 });
-    message('multichar:input', { key: 'right' });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
     expect(screen.getByText('Bob Doe')).toBeTruthy();
     message('multichar:previewReady', { scene: 'police', ok: true });
-    message('multichar:input', { key: 'accept' });
+    fireEvent.keyDown(window, { key: 'Enter' });
     expect(nui.fetch).toHaveBeenCalledWith('multichar:select', { citizenid: 'BOB2' });
   });
 });

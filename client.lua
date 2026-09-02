@@ -9,7 +9,6 @@ local sceneCatalog = {}
 local selectedCharacter = nil
 local previewGeneration = 0
 local currentMode = nil
-local nuiVisible = false
 
 exports.qbcore:claimUI()
 
@@ -76,13 +75,39 @@ local function leaveServerMode()
 end
 
 local function closeNuiOnly()
-    nuiVisible = false
     currentMode = nil
     SetNuiFocus(false, false)
     send('multichar:close')
 end
 
+-- Set on the new-character handoff and consumed by the next finishAt, so the
+-- completion signal below can tell a brand-new character apart from an
+-- ordinary login without every consumer having to infer it.
+local pendingNewCharacter = false
+
+-- The "you are actually in the world now" signal, for resources that must not
+-- act until the player is spawned (qbclothing's first-character fitting room
+-- is the reason this exists). Deliberately NOT the cleared `qbmultichar:mode`
+-- state bag: leaveServerMode runs BEFORE the teleport below, and the bag clear
+-- replicates asynchronously on top of that, so anything watching the bag can
+-- wake while the ped is still being placed. This fires after the ped has been
+-- moved, resurrected, revealed and unfrozen, and after the fade-in has
+-- actually completed.
+local function announceSpawnComplete(isNew)
+    CreateThread(function()
+        -- DoScreenFadeIn is asynchronous. Bounded, so a fade another resource
+        -- cancels or overrides still releases the signal rather than stranding
+        -- every listener for the rest of the session.
+        local deadline = GetGameTimer() + 5000
+        while not IsScreenFadedIn() and GetGameTimer() < deadline do Wait(0) end
+        TriggerEvent('qbmultichar:client:spawnComplete', isNew == true)
+    end)
+end
+
 local function finishAt(coords)
+    local isNew = pendingNewCharacter
+    pendingNewCharacter = false
+
     DoScreenFadeOut(250)
     local deadline = GetGameTimer() + 1000
     while not IsScreenFadedOut() and GetGameTimer() < deadline do Wait(0) end
@@ -100,6 +125,7 @@ local function finishAt(coords)
     ShutdownLoadingScreenNui()
     closeNuiOnly()
     DoScreenFadeIn(500)
+    announceSpawnComplete(isNew)
 end
 
 -- Shared with spawn.lua; one finalization path prevents cleanup differences
@@ -108,9 +134,8 @@ function MulticharFinishSpawn(coords)
     finishAt(coords)
 end
 
-function MulticharSetClientMode(mode, visible)
+function MulticharSetClientMode(mode)
     currentMode = mode
-    nuiVisible = visible ~= false
 end
 
 local function refreshCharacters()
@@ -131,7 +156,6 @@ local function refreshCharacters()
     ShutdownLoadingScreen()
     ShutdownLoadingScreenNui()
     DoScreenFadeIn(400)
-    nuiVisible = true
     SetNuiFocus(true, true)
     send('multichar:show', { characters = characters, maxCharacters = maxCharacters })
 end
@@ -178,7 +202,11 @@ RegisterNetEvent('qb-multicharacter:client:closeNUI', function()
     closeNuiOnly()
 end)
 
+-- qbcore fires this only on successful character creation, so it is the one
+-- place that knows the spawn about to run belongs to a brand-new character.
+-- Both branches below end in finishAt, which consumes the flag.
 RegisterNetEvent('qb-multicharacter:client:closeNUIdefault', function()
+    pendingNewCharacter = true
     if type(MulticharOpenNewSpawn) == 'function' and MulticharOpenNewSpawn() then return end
     -- Defensive compatibility fallback if spawn.lua failed to initialize.
     finishAt(Config.defaultSpawn)
@@ -269,23 +297,15 @@ RegisterNUICallback('multichar:disconnect', function(_, cb)
 end)
 
 CreateThread(function()
-    while true do
-        if nuiVisible and (currentMode == 'selection' or currentMode == 'spawn') then
-            if IsDisabledControlJustPressed(0, 174) then send('multichar:input', { key = 'left' }) end
-            if IsDisabledControlJustPressed(0, 175) then send('multichar:input', { key = 'right' }) end
-            if IsDisabledControlJustPressed(0, 201) then send('multichar:input', { key = 'accept' }) end
-            Wait(0)
-        else
-            Wait(250)
-        end
-    end
-end)
-
-CreateThread(function()
     while not NetworkIsSessionStarted() do Wait(0) end
+    local serverId = QB.cache.serverId()
+    while not serverId or serverId == -1 do
+        Wait(0)
+        serverId = QB.cache.serverId()
+    end
     -- Registered here, not at file scope: the bag name needs a real server id,
     -- which only exists once the session has started.
-    AddStateBagChangeHandler('qbcore:loggedIn', ('player:%s'):format(QB.cache.serverId()), function(_, _, value)
+    AddStateBagChangeHandler('qbcore:loggedIn', ('player:%s'):format(serverId), function(_, _, value)
         -- State-bag handlers must not yield; returnToCharacterSelect waits on
         -- the fade and on server callbacks.
         if value == false then CreateThread(returnToCharacterSelect) end
@@ -301,6 +321,6 @@ end)
 AddEventHandler('onClientResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     previewGeneration = previewGeneration + 1
-    nuiVisible, currentMode = false, nil
+    currentMode = nil
     SetNuiFocus(false, false)
 end)

@@ -10,6 +10,7 @@ local creator = {
     camCoords = nil,
     camRot = nil,
 }
+local cameraWorkerGeneration = 0
 
 local function send(action, data)
     SendNUIMessage({ action = action, data = data })
@@ -24,6 +25,40 @@ local function forwardVector(rotation)
     local pitch, yaw = math.rad(rotation.x), math.rad(rotation.z)
     local cosPitch = math.abs(math.cos(pitch))
     return vector3(-math.sin(yaw) * cosPitch, math.cos(yaw) * cosPitch, math.sin(pitch))
+end
+
+local function startCameraWorker()
+    cameraWorkerGeneration = cameraWorkerGeneration + 1
+    local generation = cameraWorkerGeneration
+
+    CreateThread(function()
+        while creator.active and generation == cameraWorkerGeneration do
+            if creator.cursor or not creator.cam then
+                Wait(100)
+            else
+                local dt = GetFrameTime()
+                local lookX = GetDisabledControlNormal(0, 1)
+                local lookY = GetDisabledControlNormal(0, 2)
+                creator.camRot = vector3(
+                    math.max(-89.0, math.min(89.0, creator.camRot.x - lookY * Config.creator.lookSensitivity)),
+                    0.0,
+                    creator.camRot.z - lookX * Config.creator.lookSensitivity
+                )
+                local forward = forwardVector(creator.camRot)
+                local right = vector3(math.cos(math.rad(creator.camRot.z)), math.sin(math.rad(creator.camRot.z)), 0.0)
+                local speed = Config.creator.moveSpeed * (IsDisabledControlPressed(0, 21) and Config.creator.fastMultiplier or 1.0) * dt
+                if IsDisabledControlPressed(0, 32) then creator.camCoords = creator.camCoords + forward * speed end
+                if IsDisabledControlPressed(0, 33) then creator.camCoords = creator.camCoords - forward * speed end
+                if IsDisabledControlPressed(0, 34) then creator.camCoords = creator.camCoords - right * speed end
+                if IsDisabledControlPressed(0, 35) then creator.camCoords = creator.camCoords + right * speed end
+                if IsDisabledControlPressed(0, 44) then creator.camCoords = creator.camCoords + vector3(0.0, 0.0, speed) end
+                if IsDisabledControlPressed(0, 38) then creator.camCoords = creator.camCoords - vector3(0.0, 0.0, speed) end
+                SetCamCoord(creator.cam, creator.camCoords.x, creator.camCoords.y, creator.camCoords.z)
+                SetCamRot(creator.cam, creator.camRot.x, 0.0, creator.camRot.z, 2)
+                Wait(0)
+            end
+        end
+    end)
 end
 
 local function startEditorCamera()
@@ -116,12 +151,14 @@ end
 
 local function closeCreator()
     if not creator.active then return end
+    creator.active = false
+    cameraWorkerGeneration = cameraWorkerGeneration + 1
     destroyEditorCamera()
     SceneRuntime.endMode()
     pcall(function() QB.callback.trigger('qbmultichar:server:leaveMode') end)
     SetNuiFocus(false, false)
     send('multichar:creator:close')
-    creator.active, creator.draft, creator.catalog = false, nil, {}
+    creator.draft, creator.catalog = nil, {}
 end
 
 local function newDraft()
@@ -175,6 +212,7 @@ RegisterNetEvent('qbmultichar:client:openCreator', function(catalog)
     creator.active, creator.catalog, creator.draft = true, catalog or {}, newDraft()
     creator.cursor, creator.camCoords, creator.camRot = true, nil, nil
     SceneRuntime.beginMode()
+    startCameraWorker()
     SetNuiFocus(true, true)
     send('multichar:creator:show', { draft = creator.draft, scenes = creator.catalog, cursor = true })
 end)
@@ -306,35 +344,6 @@ end)
 
 RegisterNetEvent('qbmultichar:client:sceneRemove', function(id)
     if creator.active then creator.catalog[id] = nil; updateUi() end
-end)
-
-CreateThread(function()
-    while true do
-        if creator.active and not creator.cursor and creator.cam then
-            local dt = GetFrameTime()
-            local lookX = GetDisabledControlNormal(0, 1)
-            local lookY = GetDisabledControlNormal(0, 2)
-            creator.camRot = vector3(
-                math.max(-89.0, math.min(89.0, creator.camRot.x - lookY * Config.creator.lookSensitivity)),
-                0.0,
-                creator.camRot.z - lookX * Config.creator.lookSensitivity
-            )
-            local forward = forwardVector(creator.camRot)
-            local right = vector3(math.cos(math.rad(creator.camRot.z)), math.sin(math.rad(creator.camRot.z)), 0.0)
-            local speed = Config.creator.moveSpeed * (IsDisabledControlPressed(0, 21) and Config.creator.fastMultiplier or 1.0) * dt
-            if IsDisabledControlPressed(0, 32) then creator.camCoords = creator.camCoords + forward * speed end
-            if IsDisabledControlPressed(0, 33) then creator.camCoords = creator.camCoords - forward * speed end
-            if IsDisabledControlPressed(0, 34) then creator.camCoords = creator.camCoords - right * speed end
-            if IsDisabledControlPressed(0, 35) then creator.camCoords = creator.camCoords + right * speed end
-            if IsDisabledControlPressed(0, 44) then creator.camCoords = creator.camCoords + vector3(0.0, 0.0, speed) end
-            if IsDisabledControlPressed(0, 38) then creator.camCoords = creator.camCoords - vector3(0.0, 0.0, speed) end
-            SetCamCoord(creator.cam, creator.camCoords.x, creator.camCoords.y, creator.camCoords.z)
-            SetCamRot(creator.cam, creator.camRot.x, 0.0, creator.camRot.z, 2)
-            Wait(0)
-        else
-            Wait(100)
-        end
-    end
 end)
 
 AddEventHandler('onClientResourceStop', function(resource)

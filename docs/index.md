@@ -53,11 +53,28 @@ build` from the `web` directory.
   ten-second load falls back behind a blackout to a safe overview camera.
 - New characters use the same mandatory carousel (including a **First
   Arrival** option). qbclothing's mandatory first-character creator waits for
-  the chosen spawn and complete cinematic cleanup before opening.
+  the chosen spawn to complete before opening.
 
 The server publishes `LocalPlayer.state['qbmultichar:mode']` as `selection`,
 `spawn`, `creator`, or `nil`. qbhud observes it and stays hidden until the
 cinematic mode is completely cleaned up.
+
+## Spawn completion
+
+```lua
+AddEventHandler('qbmultichar:client:spawnComplete', function(isNew) end)
+```
+
+A client-local event fired once the player is genuinely in the world: the ped
+has been placed, resurrected, revealed and unfrozen, and the fade-in has
+finished. `isNew` is `true` only for a character that was just created.
+
+Use this, not the cleared `qbmultichar:mode` state bag, to gate anything that
+must not run before the player can see themselves. The mode is cleared *before*
+the teleport (the bucket has to be restored first) and its clear replicates
+asynchronously on top of that, so a watcher of the bag can wake mid-teleport.
+That is what used to put qbclothing's first-character fitting room on screen
+ahead of the spawn.
 
 ## Bundled scenes and resolution
 

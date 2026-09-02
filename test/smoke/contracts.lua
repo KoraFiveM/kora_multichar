@@ -54,6 +54,8 @@ H.test('staff logout is permission-gated and travels on the replicated login sta
         'logout must not push character select; the client follows qbcore:loggedIn')
     H.truthy(client:find("AddStateBagChangeHandler('qbcore:loggedIn'", 1, true),
         'the client returns to selection by following the replicated login state')
+    H.truthy(client:find('while not serverId or serverId == -1 do', 1, true),
+        'the login-state bag must wait for qblib to resolve its stable server id')
     H.truthy(client:find('if returningToSelection or currentMode ~= nil then return end', 1, true),
         'the return must not re-enter selection or fight an active cinematic mode')
 end)
@@ -63,6 +65,7 @@ H.test('selection previews are cancellable and login only follows explicit conti
     H.truthy(client:find('generation ~= previewGeneration', 1, true), 'stale previews must be discarded')
     H.truthy(client:find("RegisterNUICallback('multichar:select'", 1, true), 'continue callback must be explicit')
     H.truthy(client:find("TriggerServerEvent('qb-multicharacter:server:loadUserData'", 1, true), 'only select callback loads a character')
+    H.falsy(client:find("send('multichar:input'", 1, true), 'focused NUI keyboard events should not be duplicated by a Lua input poll')
 end)
 
 H.test('spawn exit is mandatory and every success uses the central finalizer', function()
@@ -73,11 +76,28 @@ H.test('spawn exit is mandatory and every success uses the central finalizer', f
     H.truthy(client:find('SceneRuntime.endMode()', 1, true) and client:find('leaveServerMode()', 1, true), 'central finalizer clears client and server modes')
 end)
 
+-- The cleared `qbmultichar:mode` bag is NOT a usable "player has spawned"
+-- signal: leaveServerMode runs before the teleport, and the clear replicates
+-- asynchronously on top of that. Consumers that must wait for a real spawn
+-- (qbclothing's first-character fitting room) need an explicit event, fired
+-- after the ped is placed and the fade-in has completed.
+H.test('spawn completion is announced as an event, after the fade-in', function()
+    H.truthy(client:find("TriggerEvent('qbmultichar:client:spawnComplete'", 1, true), 'the finalizer must announce spawn completion')
+    H.truthy(client:find('while not IsScreenFadedIn() and GetGameTimer() < deadline do', 1, true),
+        'the announcement must wait for the fade-in to actually complete, and be bounded')
+    H.truthy(client:find('local isNew = pendingNewCharacter', 1, true),
+        'the finalizer must consume the new-character flag so listeners can tell creation from login')
+    H.truthy(client:find('pendingNewCharacter = true', 1, true), 'the new-character handoff must set that flag')
+    H.truthy(client:find('announceSpawnComplete(isNew)', 1, true), 'every spawn finalization announces, new or returning')
+end)
+
 H.test('scene studio exports through clipboard without writing server files', function()
     H.truthy(creator:find('QB.nui.copyToClipboard(text)', 1, true), 'studio should copy generated Lua')
     H.truthy(creator:find('definition.id = nil', 1, true), 'only the registry-level id should be omitted')
     H.truthy(creator:find("id = 'close'", 1, true) and creator:find("id = 'focal'", 1, true) and creator:find("id = 'establishing'", 1, true), 'new studio scenes should use the complete camera arc')
     H.falsy(creator:find('io.open', 1, true), 'studio must not write files')
+    H.truthy(creator:find('local function startCameraWorker()', 1, true), 'the studio should create its camera worker on demand')
+    H.truthy(creator:find('while creator.active and generation == cameraWorkerGeneration do', 1, true), 'the camera worker must terminate when the studio closes')
 end)
 
 H.report('contracts')
