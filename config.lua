@@ -22,10 +22,17 @@ Config.sceneLimits = {
     maxCameras = 8,
     maxCues = 64,
     maxTimelineMs = 120000,
-    -- Cold clients can need more than five seconds to pull map collision for
-    -- the first preview. Keep the blackout bounded, but allow the streamer a
-    -- full ten seconds before falling back.
-    streamTimeoutMs = 10000,
+    -- Asset loads (models, anim dicts, particle assets). These are hard
+    -- requirements -- a scene without its character model has nothing to show
+    -- -- so the budget is generous: a cold client on a slow disk can sit well
+    -- past ten seconds on its first request of the session.
+    streamTimeoutMs = 20000,
+    -- World streaming is a separate, longer budget because it is a *hint*, not
+    -- a requirement. The engine keeps pulling the map in around the focus
+    -- position whether or not the load scene ever reports itself loaded, so
+    -- this expiring shows the scene anyway rather than failing the preview.
+    -- See streamWorld in scene.lua.
+    worldStreamTimeoutMs = 30000,
 }
 
 -- Cinematic travel between spawn previews. The camera lifts away from the
