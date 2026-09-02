@@ -15,6 +15,7 @@ local state = {
     particles = {},
     sounds = {},
     previewPed = nil,
+    hiddenPed = nil,
     activeCam = nil,
     spawnLookAt = nil,
     spawnPosition = nil,
@@ -509,6 +510,13 @@ local function applyEnvironment(environment)
     end
 end
 
+local function hidePlayerPed(ped)
+    FreezeEntityPosition(ped, true)
+    SetEntityInvincible(ped, true)
+    SetEntityCollision(ped, false, false)
+    SetEntityVisible(ped, false, false)
+end
+
 function SceneRuntime.beginMode()
     if state.modeActive then return end
     state.modeActive = true
@@ -518,14 +526,24 @@ function SceneRuntime.beginMode()
         invincible = GetPlayerInvincible(PlayerId()),
         frozen = IsEntityPositionFrozen(ped),
     }
-    FreezeEntityPosition(ped, true)
-    SetEntityInvincible(ped, true)
-    SetEntityCollision(ped, false, false)
-    SetEntityVisible(ped, false, false)
+    hidePlayerPed(ped)
+    state.hiddenPed = ped
     DoScreenFadeOut(0)
 
     CreateThread(function()
         while state.modeActive do
+            -- The game's own first spawn can still be in flight when selection
+            -- opens on a cold client, and finishing it CREATES A NEW PED. The
+            -- new handle is visible, unfrozen and collidable, so the hide above
+            -- silently stops applying and a real player drops into the middle
+            -- of the shot -- on the first load only, which is exactly why this
+            -- came in as "it works on the second load, not the first".
+            -- Re-assert on every handle change: one comparison per frame.
+            local ped = PlayerPedId()
+            if ped ~= state.hiddenPed then
+                hidePlayerPed(ped)
+                state.hiddenPed = ped
+            end
             HideHudAndRadarThisFrame()
             DisableAllControlActions(0)
             SetPedDensityMultiplierThisFrame(0.0)
@@ -800,6 +818,7 @@ function SceneRuntime.endMode()
     state.sceneGeneration = state.sceneGeneration + 1
     cleanupScene()
     state.modeActive = false
+    state.hiddenPed = nil
     local ped, previous = PlayerPedId(), state.playerState or {}
     SetEntityVisible(ped, previous.visible ~= false, false)
     SetEntityCollision(ped, true, true)

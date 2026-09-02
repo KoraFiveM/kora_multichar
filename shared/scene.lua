@@ -277,7 +277,27 @@ function SceneSchema.resolve(scenes, character, defaultId)
         return pa > pb
     end)
     if matches[1] then return matches[1].scene, matches[1].id end
-    return scenes and scenes[defaultId], defaultId
+
+    -- No selector matched: an unemployed character, or any job/gang nobody has
+    -- authored a scene for. The configured default covers both.
+    local fallback = scenes and scenes[defaultId]
+    if fallback then return fallback, defaultId end
+
+    -- The default itself is missing -- a misconfigured Config.defaultScene, or
+    -- a default scene the registry rejected. Returning nil here is worse than
+    -- it looks: every caller's own retry chain re-resolves through this same
+    -- default, so one missing scene fails three times over and leaves the
+    -- player on a black screen. Any usable scene beats that, chosen by id so
+    -- the choice is deterministic rather than pairs() order.
+    if scenes then
+        local ids = {}
+        for id, scene in pairs(scenes) do
+            if scene.enabled ~= false then ids[#ids + 1] = id end
+        end
+        table.sort(ids)
+        if ids[1] then return scenes[ids[1]], ids[1] end
+    end
+    return nil, defaultId
 end
 
 function SceneSchema.localToWorld(anchor, offset)

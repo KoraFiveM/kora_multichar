@@ -50,6 +50,13 @@ end
 local bundledScenes = {
     civilian = {
         label = 'Vespucci Beach · Sunset', priority = 0,
+        -- Serves two roles, and needs both. The selector makes it the explicit
+        -- scene for an unemployed character; being Config.defaultScene makes it
+        -- the fallback for any job or gang nobody has authored a scene for.
+        -- Priority 0 keeps it the lowest bidder, so a configured job or gang
+        -- scene always outranks it -- including for an unemployed character who
+        -- is in a gang.
+        selectors = { { job = 'unemployed' } },
         -- Dry sand east of the old offshore anchor. Local -Y runs out
         -- toward the water, keeping both moving riders behind the character.
         anchor = vector4(-1560.5, -1180.5, 2.2, 270.0),

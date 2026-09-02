@@ -48,6 +48,13 @@ H.test('preview entities stay local and cleanup covers cinematic state', functio
     H.truthy(runtime:find('TaskVehicleDriveToCoordLongrange', 1, true), 'authored local road drivers should be able to follow scene routes')
     H.truthy(runtime:find('TaskBoatMission', 1, true), 'authored local watercraft drivers should use boat navigation')
     H.truthy(runtime:find('DoScreenFadeOut', 1, true) and runtime:find('DoScreenFadeIn', 1, true), 'world streaming should remain behind a native blackout')
+    -- Finishing the game's own first spawn creates a NEW player ped, silently
+    -- undoing beginMode's hide. That only ever happens on the first load of a
+    -- session, which is why this arrived as "it works on the second load".
+    H.truthy(runtime:find('if ped ~= state.hiddenPed then', 1, true),
+        'the cinematic hide must be re-asserted when the engine swaps the player ped')
+    H.truthy(client:find('local function awaitStablePlayerPed()', 1, true),
+        'selection must wait for a real, settled player ped, not just a started session')
     H.truthy(runtime:find("state.cameras.spawnLift", 1, true), 'spawn travel should begin with a vertical lift camera')
     H.truthy(runtime:find("state.cameras.spawnTravel", 1, true), 'spawn travel should use an aerial cruise camera')
     H.truthy(runtime:find("state.cameras.spawnNext", 1, true), 'spawn travel should descend into a separate destination camera')

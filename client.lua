@@ -372,8 +372,38 @@ RegisterNUICallback('multichar:disconnect', function(_, cb)
     cb({ ok = true })
 end)
 
-CreateThread(function()
+-- NetworkIsSessionStarted is true well before the game has finished putting the
+-- player in the world: spawnmanager's own first spawn is often still in flight,
+-- and completing it replaces the player ped with a fresh, visible, unfrozen
+-- handle. Opening selection into that window is what made the FIRST preview of
+-- a session behave differently from every later one. Wait for a ped that
+-- actually exists and stays the same handle for a moment, so the cinematic
+-- setup applies to the real player rather than to a placeholder the engine is
+-- about to throw away. Bounded: a client that never settles still gets its
+-- character select, just with the old racy behaviour rather than none at all.
+local function awaitStablePlayerPed()
     while not NetworkIsSessionStarted() do Wait(0) end
+
+    local deadline = GetGameTimer() + 30000
+    local stableSince, lastPed = nil, nil
+    while GetGameTimer() < deadline do
+        local ped = PlayerPedId()
+        if ped ~= 0 and DoesEntityExist(ped) and NetworkIsPlayerActive(PlayerId()) then
+            if ped ~= lastPed then
+                lastPed, stableSince = ped, GetGameTimer()
+            elseif GetGameTimer() - stableSince >= 750 then
+                return
+            end
+        else
+            lastPed, stableSince = nil, nil
+        end
+        Wait(0)
+    end
+    print('^3[qbmultichar]^7 player ped never settled; opening selection anyway.')
+end
+
+CreateThread(function()
+    awaitStablePlayerPed()
     local serverId = QB.cache.serverId()
     while not serverId or serverId == -1 do
         Wait(0)
