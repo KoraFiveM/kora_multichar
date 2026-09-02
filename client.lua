@@ -33,6 +33,58 @@ local function fallbackModel(character)
         and 'mp_f_freemode_01' or 'mp_m_freemode_01'
 end
 
+-- Character select boots on a client that is at its coldest, and every step of
+-- it is a cross-resource callback with a bounded timeout. A machine that takes
+-- a long time to join can blow through that timeout while the server is
+-- answering perfectly well, and a rejected round trip is indistinguishable at
+-- the call site from a refusal: it just comes back nil. Previously that meant
+-- one printed line and a player left staring at a frozen, invisible ped with
+-- no UI -- or, worse, an empty scene catalog, which makes EVERY preview fail
+-- with 'no matching scene'. That is what "scenes aren't loading" looks like
+-- from the player's side, and nothing on screen said so.
+--
+-- So every boot callback retries, and every give-up says which step died.
+local BOOT_RETRY_MS = 2000
+local BOOT_MAX_ATTEMPTS = 8
+
+---Retries `attempt` until it returns a non-nil value. `attempt` returns nil for
+---"no answer, try again" and any other value for "answered".
+---@param attempts integer|nil defaults to BOOT_MAX_ATTEMPTS
+local function bootCall(label, attempt, attempts)
+    attempts = attempts or BOOT_MAX_ATTEMPTS
+    for tries = 1, attempts do
+        local ok, value = pcall(attempt)
+        if ok and value ~= nil then return value end
+        if tries < attempts then
+            print(('^3[qbmultichar]^7 %s did not answer (attempt %d/%d) -- retrying in %dms')
+                :format(label, tries, attempts, BOOT_RETRY_MS))
+            Wait(BOOT_RETRY_MS)
+        end
+    end
+    print(('^1[qbmultichar]^7 %s never answered after %d attempt(s).'):format(label, attempts))
+    return nil
+end
+
+---@param attempts integer|nil
+local function fetchSceneCatalog(attempts)
+    -- An empty table is treated as no answer, not as an empty registry: the
+    -- server registers the bundled scenes at script load, so zero scenes on the
+    -- wire means the round trip failed, not that this server has none.
+    return bootCall('scene catalog fetch', function()
+        local fetched = QB.callback.trigger('qbmultichar:server:getScenes')
+        if type(fetched) ~= 'table' or next(fetched) == nil then return nil end
+        return fetched
+    end, attempts)
+end
+
+-- One attempt, never the full boot budget: this runs with the player already
+-- watching a "Loading scene..." spinner, so it must either recover promptly or
+-- get out of the way and let the preview report its own failure.
+local function refetchScenesIfEmpty()
+    if next(sceneCatalog) ~= nil then return end
+    sceneCatalog = fetchSceneCatalog(1) or {}
+end
+
 local function previewCharacter(citizenid)
     local character = charactersById[citizenid]
     if not character then return end
@@ -48,6 +100,11 @@ local function previewCharacter(citizenid)
         end)
         if generation ~= previewGeneration then return end
         if not ok or type(model) ~= 'string' then model, skin = fallbackModel(character), {} end
+        -- A catalog that arrived empty (a boot fetch that never answered) makes
+        -- all three attempts below fail identically with 'no matching scene'.
+        -- One late refetch recovers a client whose network settled after boot.
+        refetchScenesIfEmpty()
+        if generation ~= previewGeneration then return end
         local scene, sceneId = SceneSchema.resolve(sceneCatalog, character, Config.defaultScene)
         local loaded, err = SceneRuntime.loadCharacter(scene, model, skin)
         if not loaded and sceneId ~= Config.defaultScene then
@@ -139,25 +196,43 @@ function MulticharSetClientMode(mode)
 end
 
 local function refreshCharacters()
-    local entered, enterErr = QB.callback.trigger('qbmultichar:server:enterMode', 'selection')
+    local entered, enterErr
+    for tries = 1, BOOT_MAX_ATTEMPTS do
+        entered, enterErr = QB.callback.trigger('qbmultichar:server:enterMode', 'selection')
+        -- An explicit `false` is a real refusal with a reason ('already logged
+        -- in') and must not be retried. Only nil -- the shape a rejected or
+        -- timed-out round trip takes -- means "ask again".
+        if entered ~= nil then break end
+        print(('^3[qbmultichar]^7 selection handshake did not answer (attempt %d/%d) -- retrying in %dms')
+            :format(tries, BOOT_MAX_ATTEMPTS, BOOT_RETRY_MS))
+        Wait(BOOT_RETRY_MS)
+    end
     if not entered then
-        print(('[qbmultichar] could not enter selection mode: %s'):format(tostring(enterErr)))
+        print(('^1[qbmultichar]^7 could not enter selection mode: %s')
+            :format(tostring(enterErr or 'the server never answered')))
         return
     end
     currentMode = 'selection'
     SceneRuntime.beginMode()
 
-    local fetched = QB.callback.trigger('qb-multicharacter:server:setupCharacters') or {}
+    local fetched = bootCall('character list fetch', function()
+        local list = QB.callback.trigger('qb-multicharacter:server:setupCharacters')
+        return type(list) == 'table' and list or nil
+    end) or {}
     maxCharacters = QB.callback.trigger('qb-multicharacter:server:GetNumberOfCharacters') or maxCharacters
-    local fetchedScenes = QB.callback.trigger('qbmultichar:server:getScenes') or {}
-    sceneCatalog = type(fetchedScenes) == 'table' and fetchedScenes or {}
-    setCharacters(type(fetched) == 'table' and fetched or {})
+    sceneCatalog = fetchSceneCatalog() or {}
+    setCharacters(fetched)
 
     ShutdownLoadingScreen()
     ShutdownLoadingScreenNui()
     DoScreenFadeIn(400)
     SetNuiFocus(true, true)
     send('multichar:show', { characters = characters, maxCharacters = maxCharacters })
+    -- Say it on screen rather than letting the player sit on "Loading scene..."
+    -- forever while every preview quietly fails to resolve a scene.
+    if next(sceneCatalog) == nil then
+        send('multichar:error', 'Scenes could not be loaded from the server. Previews will be unavailable.')
+    end
 end
 
 RegisterNetEvent('qb-multicharacter:client:chooseChar', refreshCharacters)
@@ -247,9 +322,10 @@ RegisterNUICallback('multichar:createPreview', function(data, cb)
     previewGeneration = previewGeneration + 1
     local generation = previewGeneration
     local model = tonumber(data and data.gender) == 1 and 'mp_f_freemode_01' or 'mp_m_freemode_01'
-    local scene = sceneCatalog[Config.defaultScene]
     CreateThread(function()
-        local ok, err = SceneRuntime.loadCharacter(scene, model, {})
+        refetchScenesIfEmpty()
+        if generation ~= previewGeneration then return end
+        local ok, err = SceneRuntime.loadCharacter(sceneCatalog[Config.defaultScene], model, {})
         if generation ~= previewGeneration then return end
         send('multichar:previewReady', { citizenid = 'new', scene = Config.defaultScene, ok = ok, error = err })
     end)
@@ -296,8 +372,38 @@ RegisterNUICallback('multichar:disconnect', function(_, cb)
     cb({ ok = true })
 end)
 
-CreateThread(function()
+-- NetworkIsSessionStarted is true well before the game has finished putting the
+-- player in the world: spawnmanager's own first spawn is often still in flight,
+-- and completing it replaces the player ped with a fresh, visible, unfrozen
+-- handle. Opening selection into that window is what made the FIRST preview of
+-- a session behave differently from every later one. Wait for a ped that
+-- actually exists and stays the same handle for a moment, so the cinematic
+-- setup applies to the real player rather than to a placeholder the engine is
+-- about to throw away. Bounded: a client that never settles still gets its
+-- character select, just with the old racy behaviour rather than none at all.
+local function awaitStablePlayerPed()
     while not NetworkIsSessionStarted() do Wait(0) end
+
+    local deadline = GetGameTimer() + 30000
+    local stableSince, lastPed = nil, nil
+    while GetGameTimer() < deadline do
+        local ped = PlayerPedId()
+        if ped ~= 0 and DoesEntityExist(ped) and NetworkIsPlayerActive(PlayerId()) then
+            if ped ~= lastPed then
+                lastPed, stableSince = ped, GetGameTimer()
+            elseif GetGameTimer() - stableSince >= 750 then
+                return
+            end
+        else
+            lastPed, stableSince = nil, nil
+        end
+        Wait(0)
+    end
+    print('^3[qbmultichar]^7 player ped never settled; opening selection anyway.')
+end
+
+CreateThread(function()
+    awaitStablePlayerPed()
     local serverId = QB.cache.serverId()
     while not serverId or serverId == -1 do
         Wait(0)

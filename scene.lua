@@ -15,6 +15,7 @@ local state = {
     particles = {},
     sounds = {},
     previewPed = nil,
+    hiddenPed = nil,
     activeCam = nil,
     spawnLookAt = nil,
     spawnPosition = nil,
@@ -76,22 +77,51 @@ local function revealWorld(generation)
     if generation == state.sceneGeneration then DoScreenFadeIn(350) end
 end
 
+-- A client that is still finishing its own join can have an engine-owned load
+-- scene in flight, and NewLoadSceneStartSphere simply refuses while one is.
+-- That refusal is transient, so retry briefly rather than concluding the area
+-- does not exist.
+local STREAM_START_RETRY_MS = 250
+local STREAM_START_WINDOW_MS = 3000
+
+local function requestLoadScene(coords)
+    RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+    return NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 80.0, 0) == true
+end
+
+-- The load scene is a streaming *hint*, not a gate: the engine keeps pulling
+-- the world in around the focus position whether or not IsNewLoadSceneLoaded
+-- ever flips, and on a cold client -- slow disk, first preview of the session,
+-- still settling after the join -- it regularly does not flip inside any
+-- blackout a player will sit through. So the deadline expiring degrades: the
+-- caller builds the scene anyway and the last of the map pops in behind the
+-- camera. That is strictly better than the blackout-then-error this used to
+-- produce, which is what "scenes aren't loading" looks like from the client.
+--
+-- Returns `current` (this preview is still the live one) and `accepted` (the
+-- streamer took the request, so the destination is worth showing).
 local function streamWorld(coords, generation)
     if IsNewLoadSceneActive() then NewLoadSceneStop() end
     SetFocusPosAndVel(coords.x, coords.y, coords.z, 0.0, 0.0, 0.0)
-    RequestCollisionAtCoord(coords.x, coords.y, coords.z)
-    local started = NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 80.0, 0)
-    local deadline = GetGameTimer() + Config.sceneLimits.streamTimeoutMs
+    local started = requestLoadScene(coords)
+    local retryWindow = GetGameTimer() + STREAM_START_WINDOW_MS
+    while not started and generation == state.sceneGeneration and GetGameTimer() < retryWindow do
+        Wait(STREAM_START_RETRY_MS)
+        started = requestLoadScene(coords)
+    end
+
+    local deadline = GetGameTimer() + Config.sceneLimits.worldStreamTimeoutMs
     while started and generation == state.sceneGeneration and not IsNewLoadSceneLoaded() and GetGameTimer() < deadline do
         -- Collision requests are not sticky. Re-issue this while the load
         -- scene is active so a cold first preview keeps making progress.
         RequestCollisionAtCoord(coords.x, coords.y, coords.z)
         Wait(0)
     end
-    local current = generation == state.sceneGeneration
-    local loaded = current and started and IsNewLoadSceneLoaded()
-    if current and started then NewLoadSceneStop() end
-    return loaded
+    if generation ~= state.sceneGeneration then return false, false end
+    -- Stop the load scene only. The focus stays on the anchor: dropping it
+    -- here would stall the streamer on exactly the clients that needed it.
+    if started and IsNewLoadSceneActive() then NewLoadSceneStop() end
+    return true, started
 end
 
 local function applyFallbackSkin(ped, skin)
@@ -480,6 +510,13 @@ local function applyEnvironment(environment)
     end
 end
 
+local function hidePlayerPed(ped)
+    FreezeEntityPosition(ped, true)
+    SetEntityInvincible(ped, true)
+    SetEntityCollision(ped, false, false)
+    SetEntityVisible(ped, false, false)
+end
+
 function SceneRuntime.beginMode()
     if state.modeActive then return end
     state.modeActive = true
@@ -489,14 +526,24 @@ function SceneRuntime.beginMode()
         invincible = GetPlayerInvincible(PlayerId()),
         frozen = IsEntityPositionFrozen(ped),
     }
-    FreezeEntityPosition(ped, true)
-    SetEntityInvincible(ped, true)
-    SetEntityCollision(ped, false, false)
-    SetEntityVisible(ped, false, false)
+    hidePlayerPed(ped)
+    state.hiddenPed = ped
     DoScreenFadeOut(0)
 
     CreateThread(function()
         while state.modeActive do
+            -- The game's own first spawn can still be in flight when selection
+            -- opens on a cold client, and finishing it CREATES A NEW PED. The
+            -- new handle is visible, unfrozen and collidable, so the hide above
+            -- silently stops applying and a real player drops into the middle
+            -- of the shot -- on the first load only, which is exactly why this
+            -- came in as "it works on the second load, not the first".
+            -- Re-assert on every handle change: one comparison per frame.
+            local ped = PlayerPedId()
+            if ped ~= state.hiddenPed then
+                hidePlayerPed(ped)
+                state.hiddenPed = ped
+            end
             HideHudAndRadarThisFrame()
             DisableAllControlActions(0)
             SetPedDensityMultiplierThisFrame(0.0)
@@ -517,9 +564,12 @@ function SceneRuntime.loadCharacter(scene, model, skin)
     if not scene then return failLoad(generation, 'no matching scene') end
     state.scene = scene
     applyEnvironment(scene.environment)
-    if not streamWorld(scene.anchor, generation) then
-        return failLoad(generation, generation == state.sceneGeneration and 'scene area could not be streamed' or 'stale preview')
-    end
+    -- Deliberately ignores the `accepted` result. A character scene sits on an
+    -- authored anchor that is known to exist, so there is nothing to fall back
+    -- to and no reason to refuse the preview: the focus is set, the streamer is
+    -- working, and the scene fills in behind the camera. Only a newer preview
+    -- superseding this one stops here.
+    if not streamWorld(scene.anchor, generation) then return false, 'stale preview' end
 
     local groundedAnchor = snapToGround(scene.anchor)
     if math.abs(groundedAnchor.z - scene.anchor.z) > 0.001 then
@@ -592,24 +642,33 @@ end
 local function startWorldStream(coords)
     if IsNewLoadSceneActive() then NewLoadSceneStop() end
     SetFocusPosAndVel(coords.x, coords.y, coords.z, 0.0, 0.0, 0.0)
-    RequestCollisionAtCoord(coords.x, coords.y, coords.z)
     return {
-        started = NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 80.0, 0),
-        deadline = GetGameTimer() + Config.sceneLimits.streamTimeoutMs,
+        started = requestLoadScene(coords),
+        deadline = GetGameTimer() + Config.sceneLimits.worldStreamTimeoutMs,
         coords = coords,
     }
 end
 
 local function finishWorldStream(ticket, generation)
+    -- The aerial flight has been covering this request since lift-off, so a
+    -- load scene the engine refused back then gets its retries here, while the
+    -- camera is still cruising. A retry that lands resets the budget, since
+    -- none of the flight time streamed anything.
+    local retryWindow = GetGameTimer() + STREAM_START_WINDOW_MS
+    while not ticket.started and generation == state.sceneGeneration and GetGameTimer() < retryWindow do
+        Wait(STREAM_START_RETRY_MS)
+        ticket.started = requestLoadScene(ticket.coords)
+        if ticket.started then ticket.deadline = GetGameTimer() + Config.sceneLimits.worldStreamTimeoutMs end
+    end
+
     while ticket.started and generation == state.sceneGeneration and not IsNewLoadSceneLoaded()
         and GetGameTimer() < ticket.deadline do
         RequestCollisionAtCoord(ticket.coords.x, ticket.coords.y, ticket.coords.z)
         Wait(0)
     end
-    local current = generation == state.sceneGeneration
-    local loaded = current and ticket.started and IsNewLoadSceneLoaded()
-    if current and ticket.started and IsNewLoadSceneActive() then NewLoadSceneStop() end
-    return loaded
+    if generation ~= state.sceneGeneration then return false end
+    if ticket.started and IsNewLoadSceneActive() then NewLoadSceneStop() end
+    return ticket.started
 end
 
 local function staticSpawnPreview(location, generation, forceSafe)
@@ -617,11 +676,20 @@ local function staticSpawnPreview(location, generation, forceSafe)
     local safe = (Config.spawns.legion and Config.spawns.legion.coords) or Config.defaultSpawn
     local streamed, displayCoords = false, coords
 
-    if not forceSafe then streamed = streamWorld(coords, generation) end
-    if generation ~= state.sceneGeneration then return false, false end
+    -- `streamed` follows whether the streamer ACCEPTED the destination, not
+    -- whether it confirmed the load. A slow client that never gets a
+    -- confirmation still keeps the location it picked; only a destination the
+    -- streamer refuses outright, across the whole retry window, falls back.
+    if not forceSafe then
+        local current, accepted = streamWorld(coords, generation)
+        if not current then return false, false end
+        streamed = accepted
+    end
     if not streamed then
         displayCoords = safe
-        if not streamWorld(safe, generation) then
+        local current, accepted = streamWorld(safe, generation)
+        if not current then return false, false end
+        if not accepted then
             failLoad(generation, 'spawn area and safe fallback could not be streamed')
             return false, false
         end
@@ -750,6 +818,7 @@ function SceneRuntime.endMode()
     state.sceneGeneration = state.sceneGeneration + 1
     cleanupScene()
     state.modeActive = false
+    state.hiddenPed = nil
     local ped, previous = PlayerPedId(), state.playerState or {}
     SetEntityVisible(ped, previous.visible ~= false, false)
     SetEntityCollision(ped, true, true)
