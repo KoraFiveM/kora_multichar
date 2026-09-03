@@ -66,9 +66,11 @@ local function snapToWater(coords)
     return coords
 end
 
+local FADE_OUT_WAIT_MS = 350
+
 local function fadeWorldOut(generation)
     if not IsScreenFadedOut() then DoScreenFadeOut(120) end
-    local deadline = GetGameTimer() + 350
+    local deadline = GetGameTimer() + FADE_OUT_WAIT_MS
     while generation == state.sceneGeneration and not IsScreenFadedOut() and GetGameTimer() < deadline do Wait(0) end
     return generation == state.sceneGeneration
 end
@@ -278,6 +280,33 @@ end
 local function failLoad(generation, message)
     if generation == state.sceneGeneration then cleanupScene() end
     return false, message
+end
+
+---Tells the NUI the spawn camera is live and looking at the place, so the
+---"Scouting your arrival" cover can come down.
+---
+---Sent SEPARATELY from previewSpawn's return value, and that is the whole
+---point. The focus callback only answers once the entire preview has settled,
+---and the NUI has to race a timeout against it derived from the real worst
+---case (see spawnPreviewBudgetMs -- over a minute). Releasing the cover on
+---that answer meant a slow world stream sat the player on a loading panel for
+---the full budget with a finished camera behind it. The cover now lasts exactly
+---as long as there is genuinely nothing to look at.
+---@param generation integer The scene generation this preview belongs to.
+local function announcePreviewLive(generation)
+    -- A superseded preview must stay silent: the player has already moved on,
+    -- and its camera is not the one on screen.
+    if generation ~= state.sceneGeneration then return end
+    SendNUIMessage({ action = 'multichar:spawn:previewLive', data = { generation = generation } })
+end
+
+---Progress note while the streamer works, so a long load reads as busy rather
+---than frozen. Purely cosmetic -- it changes no state on either side.
+---@param generation integer
+---@param stage string
+local function announcePreviewStage(generation, stage)
+    if generation ~= state.sceneGeneration then return end
+    SendNUIMessage({ action = 'multichar:spawn:previewStage', data = { stage = stage } })
 end
 
 -- Keep authored composition, but never accept a camera position that has map
@@ -633,6 +662,15 @@ local function destroyCameraKey(key)
     state.cameras[key] = nil
 end
 
+-- previewSpawn's third return separates the two ways a preview can end with no
+-- camera arriving. A CANCELLED preview is not a failure: some other preview --
+-- or a mode teardown -- bumped state.sceneGeneration, which retires every
+-- thread fenced on the old one. That is simply what picking a different
+-- location looks like from in here, so the NUI must stay silent about it;
+-- every other reason is a real failure worth telling the player about.
+SceneRuntime.PREVIEW_SUPERSEDED = 'superseded'
+local PREVIEW_SUPERSEDED = SceneRuntime.PREVIEW_SUPERSEDED
+
 local function waitCameraTransition(durationMs, generation)
     local deadline = GetGameTimer() + math.max(0, tonumber(durationMs) or 0)
     while generation == state.sceneGeneration and GetGameTimer() < deadline do Wait(0) end
@@ -673,7 +711,7 @@ end
 
 local function staticSpawnPreview(location, generation, forceSafe)
     local coords, preview = location.coords, location.preview or {}
-    local safe = (Config.spawns.legion and Config.spawns.legion.coords) or Config.defaultSpawn
+    local safe = (Config.spawns[1] and Config.spawns[1].coords) or Config.defaultSpawn
     local streamed, displayCoords = false, coords
 
     -- `streamed` follows whether the streamer ACCEPTED the destination, not
@@ -681,17 +719,19 @@ local function staticSpawnPreview(location, generation, forceSafe)
     -- confirmation still keeps the location it picked; only a destination the
     -- streamer refuses outright, across the whole retry window, falls back.
     if not forceSafe then
+        announcePreviewStage(generation, 'streaming')
         local current, accepted = streamWorld(coords, generation)
-        if not current then return false, false end
+        if not current then return false, false, PREVIEW_SUPERSEDED end
         streamed = accepted
     end
     if not streamed then
         displayCoords = safe
+        announcePreviewStage(generation, 'fallback')
         local current, accepted = streamWorld(safe, generation)
-        if not current then return false, false end
+        if not current then return false, false, PREVIEW_SUPERSEDED end
         if not accepted then
             failLoad(generation, 'spawn area and safe fallback could not be streamed')
-            return false, false
+            return false, false, 'the spawn area could not be streamed'
         end
     end
 
@@ -705,14 +745,37 @@ local function staticSpawnPreview(location, generation, forceSafe)
     local cam = createPointCamera(cameraCoords, lookAt, streamed and (preview.fov or 45.0) or 45.0)
     if not cam then
         failLoad(generation, 'spawn camera could not be created')
-        return false, false
+        return false, false, 'the spawn camera could not be created'
     end
     state.cameras.spawn, state.activeCam = cam, cam
     state.spawnLookAt, state.spawnPosition = lookAt, cameraCoords
     SetCamActive(cam, true)
     RenderScriptCams(true, true, 450, true, true)
     revealWorld(generation)
+    announcePreviewLive(generation)
     return true, streamed
+end
+
+---Worst-case wall time previewSpawn can legitimately spend before it answers,
+---derived from the same config values the flight and the streamer read. The
+---NUI races its own timeout against the focus callback and needs this figure
+---to set it: the number it used to hardcode was a fifth of the real budget,
+---so every slow world stream was reported to the player as a broken preview
+---while Lua was still working correctly. Four config values feed the total,
+---which is exactly why nothing downstream should be restating it by hand.
+---@return integer ms
+function SceneRuntime.spawnPreviewBudgetMs()
+    local flight = Config.spawnFlight or {}
+    -- A load scene the engine refuses at first pays the retry window AND then
+    -- a full timeout, because a retry that lands resets the budget.
+    local worldStream = STREAM_START_WINDOW_MS + Config.sceneLimits.worldStreamTimeoutMs
+    return FADE_OUT_WAIT_MS * 2
+        + (tonumber(flight.liftDurationMs) or 900)
+        + (tonumber(flight.maxTravelDurationMs) or 4200)
+        + (tonumber(flight.descentDurationMs) or 1450)
+        -- Twice over: a destination the streamer refuses outright is covered
+        -- and re-streamed from scratch at the safe city fallback.
+        + worldStream * 2
 end
 
 function SceneRuntime.previewSpawn(location)
@@ -720,7 +783,7 @@ function SceneRuntime.previewSpawn(location)
     local generation = state.sceneGeneration
     if not location or not location.coords then
         failLoad(generation, 'spawn location has no coordinates')
-        return false, false
+        return false, false, 'that location has no coordinates'
     end
 
     -- The first spawn shot replaces the character scene and stays fully
@@ -728,7 +791,7 @@ function SceneRuntime.previewSpawn(location)
     -- spawn camera exists, navigation becomes an uninterrupted aerial flight.
     local currentCam = state.cameras.spawn
     if not currentCam or not DoesCamExist(currentCam) or not state.spawnLookAt then
-        if not fadeWorldOut(generation) then return false, false end
+        if not fadeWorldOut(generation) then return false, false, PREVIEW_SUPERSEDED end
         cleanupScene()
         return staticSpawnPreview(location, generation, false)
     end
@@ -765,7 +828,7 @@ function SceneRuntime.previewSpawn(location)
     local ticket = startWorldStream(coords)
 
     local function recoverStaticPreview()
-        if generation ~= state.sceneGeneration or not fadeWorldOut(generation) then return false, false end
+        if generation ~= state.sceneGeneration or not fadeWorldOut(generation) then return false, false, PREVIEW_SUPERSEDED end
         cleanupScene()
         return staticSpawnPreview(location, generation, false)
     end
@@ -774,20 +837,20 @@ function SceneRuntime.previewSpawn(location)
     if not liftCam then return recoverStaticPreview() end
     state.cameras.spawnLift, state.activeCam = liftCam, liftCam
     SetCamActiveWithInterp(liftCam, currentCam, tonumber(settings.liftDurationMs) or 900, true, true)
-    if not waitCameraTransition(settings.liftDurationMs or 900, generation) then return false, false end
+    if not waitCameraTransition(settings.liftDurationMs or 900, generation) then return false, false, PREVIEW_SUPERSEDED end
 
     local travelCam = createPointCamera(travelPosition, targetLookAt, 58.0)
     if not travelCam then return recoverStaticPreview() end
     state.cameras.spawnTravel, state.activeCam = travelCam, travelCam
     SetCamActiveWithInterp(travelCam, liftCam, travelDuration, true, true)
-    if not waitCameraTransition(travelDuration, generation) then return false, false end
+    if not waitCameraTransition(travelDuration, generation) then return false, false, PREVIEW_SUPERSEDED end
 
     local streamed = finishWorldStream(ticket, generation)
-    if generation ~= state.sceneGeneration then return false, false end
+    if generation ~= state.sceneGeneration then return false, false, PREVIEW_SUPERSEDED end
     if not streamed then
         -- Never reveal an unstreamed destination. Cover the rare failure and
         -- settle onto the known-safe city fallback instead.
-        if not fadeWorldOut(generation) then return false, false end
+        if not fadeWorldOut(generation) then return false, false, PREVIEW_SUPERSEDED end
         cleanupScene()
         return staticSpawnPreview(location, generation, true)
     end
@@ -798,7 +861,7 @@ function SceneRuntime.previewSpawn(location)
     if not finalCam then return recoverStaticPreview() end
     state.cameras.spawnNext, state.activeCam = finalCam, finalCam
     SetCamActiveWithInterp(finalCam, travelCam, tonumber(settings.descentDurationMs) or 1450, true, true)
-    if not waitCameraTransition(settings.descentDurationMs or 1450, generation) then return false, false end
+    if not waitCameraTransition(settings.descentDurationMs or 1450, generation) then return false, false, PREVIEW_SUPERSEDED end
 
     destroyCameraKey('spawn')
     destroyCameraKey('spawnLift')
@@ -806,6 +869,7 @@ function SceneRuntime.previewSpawn(location)
     state.cameras.spawnNext = nil
     state.cameras.spawn, state.activeCam = finalCam, finalCam
     state.spawnLookAt, state.spawnPosition = targetLookAt, targetCamera
+    announcePreviewLive(generation)
     return true, streamed
 end
 

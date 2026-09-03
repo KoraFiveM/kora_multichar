@@ -51,10 +51,32 @@ build` from the `web` directory.
   along the authored destination camera's approach. `Config.spawnFlight`
   controls altitude, speed, and the three transition timings. A bounded
   ten-second load falls back behind a blackout to a safe overview camera.
+- Locations are offered in a fixed order: last location, then `Config.spawns`
+  exactly as declared, then owned property by label.
 - New characters bypass the spawn carousel and land immediately at
-  `Config.defaultSpawn` (the configured first-arrival point). qbclothing's
-  mandatory first-character creator waits for that spawn to complete before
-  opening.
+  `Config.defaultSpawn`, which **is** `Config.spawns[1].coords` — the first
+  location the picker offers and where a new character wakes up are one
+  decision, so reordering that list moves both. qbclothing's mandatory
+  first-character creator waits for that spawn to complete before opening.
+- The UI never reports a working preview as a broken one. It sizes its own
+  timeout from the budget Lua ships with the spawn payload
+  (`SceneRuntime.spawnPreviewBudgetMs`, derived from the flight timings and the
+  world-stream timeout), and a preview abandoned because the player clicked
+  elsewhere reports `superseded` and raises no toast. Only a camera that cannot
+  be created or a destination that cannot be streamed is reported.
+- **The "Scouting your arrival" cover comes down on Lua's own signal, not on
+  the focus callback's answer.** `multichar:spawn:previewLive` is sent the
+  moment the spawn camera is active and the world revealed; the callback only
+  answers once the whole preview has settled, and the budget above is over a
+  minute on default config. Releasing the cover on that answer left a player
+  sitting on a loading panel with a finished camera behind it — the "stuck on
+  Scouting your arrival" report. The callback still resolves afterwards and
+  still decides whether a failure is worth a toast, and a timeout for a preview
+  whose camera already went live is silent, because the player can see it did.
+- While the cover is up, `multichar:spawn:previewStage` names what is being
+  waited on (`streaming`, or `fallback` once the destination has been given up
+  on). Cosmetic, but a world stream can legitimately take tens of seconds and
+  one fixed line for all of it is indistinguishable from a hung panel.
 
 The server publishes `LocalPlayer.state['qbmultichar:mode']` as `selection`,
 `spawn`, `creator`, or `nil`. qbhud observes it and stays hidden until the
@@ -291,27 +313,41 @@ into configuration or another resource after reviewing it.
 
 ## Spawn configuration
 
-`Config.spawns` remains compatible with `{ coords, label }` and adds
-`description` plus optional live-preview data:
+`Config.spawns` is an **ordered array**, each entry carrying its own `id`. It
+still accepts nothing more than `{ id, coords, label }` and adds `description`
+plus optional live-preview data:
 
 ```lua
-Config.spawns.harbor = {
-    coords = vector4(-800.0, -1500.0, 1.6, 110.0),
-    label = 'Harbor',
-    description = 'Arrive on the waterfront.',
-    preview = {
-        camera = vector3(-780.0, -1480.0, 18.0),
-        lookAt = vector3(-800.0, -1500.0, 2.0),
-        fov = 45.0,
-        environment = { hour = 6, minute = 30, weather = 'CLEAR' },
+Config.spawns = {
+    { id = 'legion', coords = vector4(195.17, -933.77, 30.69, 144.0), label = 'Legion Square' },
+    {
+        id = 'harbor',
+        coords = vector4(-800.0, -1500.0, 1.6, 110.0),
+        label = 'Harbor',
+        description = 'Arrive on the waterfront.',
+        preview = {
+            camera = vector3(-780.0, -1480.0, 18.0),
+            lookAt = vector3(-800.0, -1500.0, 2.0),
+            fov = 45.0,
+            environment = { hour = 6, minute = 30, weather = 'CLEAR' },
+        },
     },
 }
+
+-- The first entry is also the new-character arrival point.
+Config.defaultSpawn = Config.spawns[1].coords
 ```
+
+The array replaces a table keyed by id. `pairs` has no defined iteration order,
+so a keyed table gave the carousel a different running order on every client
+and left "the first spawn location" — the thing `Config.defaultSpawn` and the
+streaming fallback both reach for — meaning nothing in particular. Move an
+entry to reorder the picker.
 
 Without `preview`, a safe elevated camera is derived from the destination.
 Future housing integrations can return coordinate-bearing owned houses through
 the existing `qb-spawn:server:getOwnedHouses` callback and they will appear
-automatically.
+automatically, sorted by label behind the configured spawns.
 
 ## Isolation and cleanup
 

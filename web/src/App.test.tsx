@@ -3,6 +3,7 @@
 import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
+import { SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS } from './lib';
 
 const nui = vi.hoisted(() => ({
   fetch: vi.fn(() => Promise.resolve({})),
@@ -159,7 +160,28 @@ describe('spawn and studio', () => {
     expect((screen.getByRole('button', { name: /spawn here/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 
-  it('releases the spawn selector when an arrival preview never answers', async () => {
+  it('waits out the preview budget Lua reported before calling an arrival timed out', async () => {
+    nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
+      ? new Promise(() => {})
+      : Promise.resolve({}));
+    render(<App />);
+    message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
+    message('multichar:spawn:show', { visible: true, previewBudgetMs: 40_000 });
+
+    // Lua is still legitimately working here -- a preview allowed 40s must not
+    // be declared broken at 15s, which is what the old hardcoded timeout did
+    // to every slow world stream.
+    await act(async () => { vi.advanceTimersByTime(20_000); await Promise.resolve(); });
+    expect(screen.getByText('Scouting your arrival')).toBeTruthy();
+    expect(screen.queryByText('Arrival preview timed out. You can still spawn here.')).toBeNull();
+
+    await act(async () => { vi.advanceTimersByTime(30_000); await Promise.resolve(); });
+    expect(screen.queryByText('Scouting your arrival')).toBeNull();
+    expect(screen.getByText('Arrival preview timed out. You can still spawn here.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: /spawn here/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('releases the spawn selector even when no preview budget was reported', async () => {
     nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
       ? new Promise(() => {})
       : Promise.resolve({}));
@@ -167,9 +189,63 @@ describe('spawn and studio', () => {
     message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
     message('multichar:spawn:show', { visible: true });
 
-    await act(async () => { vi.advanceTimersByTime(15_000); await Promise.resolve(); });
+    await act(async () => { vi.advanceTimersByTime(SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS); await Promise.resolve(); });
     expect(screen.queryByText('Scouting your arrival')).toBeNull();
-    expect(screen.getByText('Arrival preview timed out. You can still spawn here.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: /spawn here/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('drops the cover as soon as Lua says the camera is live, without waiting for the callback', async () => {
+    // This is the "stuck on Scouting your arrival" report. The focus callback
+    // only answers once the whole preview has settled, and the NUI races it
+    // against a budget derived from the real worst case -- over a minute. The
+    // camera is usually live long before that, so the cover has to come down on
+    // Lua's own signal rather than on the answer.
+    nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
+      ? new Promise(() => {})
+      : Promise.resolve({}));
+    render(<App />);
+    message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
+    message('multichar:spawn:show', { visible: true, previewBudgetMs: 70_000 });
+
+    expect(screen.getByText('Scouting your arrival')).toBeTruthy();
+
+    await act(async () => { message('multichar:spawn:previewLive', { generation: 1 }); await Promise.resolve(); });
+
+    expect(screen.queryByText('Scouting your arrival')).toBeNull();
+    expect((screen.getByRole('button', { name: /spawn here/i }) as HTMLButtonElement).disabled).toBe(false);
+
+    // And the still-pending callback must not then report a timeout for a
+    // preview the player has already been looking at.
+    await act(async () => { vi.advanceTimersByTime(80_000); await Promise.resolve(); });
+    expect(screen.queryByText('Arrival preview timed out. You can still spawn here.')).toBeNull();
+  });
+
+  it('names what a long preview is waiting on instead of one fixed line', async () => {
+    nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
+      ? new Promise(() => {})
+      : Promise.resolve({}));
+    render(<App />);
+    message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
+    message('multichar:spawn:show', { visible: true, previewBudgetMs: 70_000 });
+
+    await act(async () => { message('multichar:spawn:previewStage', { stage: 'streaming' }); await Promise.resolve(); });
+    expect(screen.getByText('Streaming the area around your arrival point')).toBeTruthy();
+
+    await act(async () => { message('multichar:spawn:previewStage', { stage: 'fallback' }); await Promise.resolve(); });
+    expect(screen.getByText(/settling on a safe spot/i)).toBeTruthy();
+  });
+
+  it('stays silent when a preview is superseded by the next one the player picks', async () => {
+    nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
+      ? Promise.resolve({ ok: false, reason: 'superseded' })
+      : Promise.resolve({}));
+    render(<App />);
+    message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
+    message('multichar:spawn:show', { visible: true });
+
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText('Scouting your arrival')).toBeNull();
+    expect(screen.queryByText('That arrival could not be previewed. You can still spawn here.')).toBeNull();
     expect((screen.getByRole('button', { name: /spawn here/i }) as HTMLButtonElement).disabled).toBe(false);
   });
 

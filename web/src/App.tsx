@@ -5,12 +5,14 @@ import {
   Plane, Play, Plus, Save, Sparkles, Trash2, UserPlus, Users, Wallet, X,
 } from "lucide-react";
 import { applyTheme, fetchNui } from "./nui";
-import { characterName, isValidBirthdate, money, normalizeCharacters, wrapIndex } from "./lib";
+import {
+  characterName, isValidBirthdate, money, normalizeCharacters, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
+} from "./lib";
 import type { Character, NuiMessage, SceneDraft, SpawnLocation } from "./types";
 
 type Stage = "hidden" | "characters" | "spawn" | "creator";
 type CreatorPayload = { draft?: SceneDraft; scenes?: Record<string, SceneDraft>; cursor?: boolean; error?: string };
-const SPAWN_PREVIEW_TIMEOUT_MS = 15_000;
+type SpawnPayload = { locations?: SpawnLocation[]; visible?: boolean; previewBudgetMs?: number };
 
 function roleLabel(role: Character["job"], fallback: string) {
   return role?.label || role?.name || fallback;
@@ -36,8 +38,19 @@ export function App() {
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  // What the spawn preview is currently waiting on, for the cover's subtitle.
+  const [previewStage, setPreviewStage] = useState<string | null>(null);
   const [spawnTraveling, setSpawnTraveling] = useState(false);
   const spawnCameraReady = useRef(false);
+  // Bumped every time Lua reports a preview camera live. The focus effect
+  // captures its value on entry so it can tell "my preview never came up" from
+  // "my preview came up ages ago and the callback is still pending" -- only the
+  // first of those is worth a timeout toast.
+  const spawnPreviewLiveSeq = useRef(0);
+  // A ref, not state: the budget arrives with the spawn payload before the
+  // first preview starts, and making it a dependency of the preview effect
+  // would restart an in-flight preview every time Lua re-sent it.
+  const spawnPreviewBudget = useRef<number | null>(null);
   const [sceneName, setSceneName] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [spawns, setSpawns] = useState<SpawnLocation[]>([]);
@@ -69,10 +82,30 @@ export function App() {
         const payload = data as { scene?: string; error?: string; ok?: boolean };
         setPreviewing(false); setSceneName(payload.scene || "");
         if (payload.ok === false && payload.error) setToast(payload.error);
+      } else if (action === "multichar:spawn:previewLive") {
+        // The spawn camera is live and looking at the place. Drop the cover
+        // NOW rather than waiting for the focus callback to answer: that
+        // answer only arrives once the whole preview has settled, and the NUI
+        // races it against a timeout derived from the real worst case (over a
+        // minute). Waiting for it sat the player on a loading panel with a
+        // finished camera behind it -- the "stuck on Scouting your arrival"
+        // report. The callback still resolves later and still decides whether
+        // a failure is worth a toast.
+        spawnCameraReady.current = true;
+        spawnPreviewLiveSeq.current += 1;
+        setPreviewing(false);
+        setSpawnTraveling(false);
+        setPreviewStage(null);
+      } else if (action === "multichar:spawn:previewStage") {
+        // Cosmetic: names what the preview is waiting on so a long world
+        // stream reads as busy rather than frozen.
+        setPreviewStage((data as { stage?: string })?.stage ?? null);
       } else if (action === "multichar:spawn:locations") {
-        const locations = (data as { locations?: SpawnLocation[] })?.locations;
-        setSpawns(Array.isArray(locations) ? locations : []); setSpawnIndex(0);
-      } else if (action === "multichar:spawn:show" && (data as { visible?: boolean })?.visible) {
+        const payload = data as SpawnPayload;
+        spawnPreviewBudget.current = payload?.previewBudgetMs ?? spawnPreviewBudget.current;
+        setSpawns(Array.isArray(payload?.locations) ? payload.locations : []); setSpawnIndex(0);
+      } else if (action === "multichar:spawn:show" && (data as SpawnPayload)?.visible) {
+        spawnPreviewBudget.current = (data as SpawnPayload)?.previewBudgetMs ?? spawnPreviewBudget.current;
         spawnCameraReady.current = false;
         setStage("spawn"); setBusy(false); setSpawnIndex(0); setPreviewing(true); setSpawnTraveling(false);
       } else if (action === "multichar:creator:show") {
@@ -112,21 +145,36 @@ export function App() {
   useEffect(() => {
     if (stage !== "spawn" || !spawn) return;
     let active = true;
+    const liveSeqAtStart = spawnPreviewLiveSeq.current;
     const initial = !spawnCameraReady.current;
     if (initial) setPreviewing(true);
     else setSpawnTraveling(true);
+    // A new preview has nothing to report yet; a stale stage line from the
+    // previous one would name the wrong location.
+    setPreviewStage(null);
     let timeoutId = 0;
     const timeout = new Promise<null>((resolve) => {
-      timeoutId = window.setTimeout(() => resolve(null), SPAWN_PREVIEW_TIMEOUT_MS);
+      timeoutId = window.setTimeout(() => resolve(null), spawnPreviewTimeout(spawnPreviewBudget.current));
     });
-    Promise.race([fetchNui<{ ok?: boolean }>("multichar:spawn:focus", { id: spawn.id }), timeout]).then((result) => {
+    Promise.race([fetchNui<{ ok?: boolean; reason?: string }>("multichar:spawn:focus", { id: spawn.id }), timeout]).then((result) => {
       if (!active) return;
       if (result === null) {
-        setToast("Arrival preview timed out. You can still spawn here.");
+        // Silent if the camera for THIS preview already went live: the player
+        // has been looking at the place for the whole budget, and telling them
+        // it timed out would describe something they can see is not true. Only
+        // a preview that never came up is worth the toast.
+        if (spawnPreviewLiveSeq.current === liveSeqAtStart) {
+          setToast("Arrival preview timed out. You can still spawn here.");
+        }
         return;
       }
       if (result?.ok === false) {
-        setToast("That arrival could not be previewed. You can still spawn here.");
+        // A superseded preview is the player picking somewhere else, or the
+        // scene being torn down under it -- expected, and silent. Only a
+        // camera or streaming failure is worth interrupting them for.
+        if (result.reason !== SPAWN_PREVIEW_SUPERSEDED) {
+          setToast("That arrival could not be previewed. You can still spawn here.");
+        }
         return;
       }
       spawnCameraReady.current = true;
@@ -198,21 +246,33 @@ export function App() {
       {stage === "creator" && creatorDraft && (
         <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
       )}
-      {previewing && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} />}
+      {previewing && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} />}
       {creating && <CreateDialog onClose={() => setCreating(false)} onBusy={setBusy} />}
       {deleting && character && <DeleteDialog character={character} onClose={() => setDeleting(false)} onBusy={setBusy} />}
     </div>
   );
 }
 
-function SceneTransition({ stage }: { stage: "characters" | "spawn" }) {
+const PREVIEW_STAGE_TEXT: Record<string, string> = {
+  streaming: "Streaming the area around your arrival point",
+  fallback: "That area would not load — settling on a safe spot in the city",
+};
+
+function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn"; previewStage?: string | null }) {
+  // The subtitle names what is actually being waited on when Lua has told us.
+  // A world stream can legitimately take tens of seconds, and a fixed
+  // "streaming the world" line for all of it is indistinguishable from a hung
+  // panel -- which is how this screen got reported as stuck.
+  const detail = (previewStage && PREVIEW_STAGE_TEXT[previewStage])
+    || "Streaming the world and finding a clear camera angle";
+
   return <div className="scene-transition" role="status" aria-live="polite">
     <div className="transition-frame" aria-hidden><span /><span /><span /></div>
     <div className="transition-content">
       <span className="transition-brand">QBCORE · CINEMATIC</span>
       <div className="transition-pulse"><Clapperboard size={20} /></div>
       <h2>{stage === "spawn" ? "Scouting your arrival" : "Setting your scene"}</h2>
-      <p>Streaming the world and finding a clear camera angle</p>
+      <p>{detail}</p>
       <div className="transition-progress"><i /></div>
     </div>
   </div>;

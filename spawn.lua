@@ -21,6 +21,11 @@ local function normalizeCoords(value)
     return vector4(value.x + 0.0, value.y + 0.0, value.z + 0.0, value.w or value.h or 0.0)
 end
 
+-- Built in a fixed order rather than sorted afterwards: last location first,
+-- then Config.spawns exactly as the server owner declared it, then any owned
+-- property. Both of the sources this reads used to be walked with `pairs`, so
+-- the carousel came out in a different order on every client and nothing could
+-- refer to "the first location" and mean it.
 local function buildLocations(cData, houses, isNew)
     spawnLocations, spawnById = {}, {}
     local current = isNew and Config.defaultSpawn or (cData and normalizeCoords(cData.position))
@@ -31,35 +36,42 @@ local function buildLocations(cData, houses, isNew)
             coords = current,
         })
     end
-    for id, configured in pairs(Config.spawns) do
+    for _, configured in ipairs(Config.spawns) do
         addLocation({
-            id = id, typeLoc = 'normal', spawnloc = id,
-            label = configured.label or id, description = configured.description,
+            id = configured.id, typeLoc = 'normal', spawnloc = configured.id,
+            label = configured.label or configured.id, description = configured.description,
             coords = configured.coords, preview = configured.preview,
         })
     end
+
+    -- qb-houses hands these over keyed by house id, which carries no order of
+    -- its own -- sorted by label so the tail of the list is stable too.
+    local owned = {}
     for key, house in pairs(type(houses) == 'table' and houses or {}) do
         local coords = normalizeCoords(house.coords or house.location or house)
         if coords then
-            addLocation({
+            owned[#owned + 1] = {
                 id = ('house:%s'):format(tostring(house.id or key)), typeLoc = 'house', spawnloc = house.id or key,
                 label = house.label or house.name or 'Owned Property',
                 description = 'Spawn at your owned property.', coords = coords,
-            })
+            }
         end
     end
-    table.sort(spawnLocations, function(a, b)
-        if a.id == 'current' then return true end
-        if b.id == 'current' then return false end
-        return a.label < b.label
+    table.sort(owned, function(a, b)
+        if a.label ~= b.label then return a.label < b.label end
+        return a.id < b.id
     end)
+    for _, house in ipairs(owned) do addLocation(house) end
 end
 
 RegisterNetEvent('qb-spawn:client:setupSpawns', function(cData, new, _apps)
     if new then return end
     local houses = QB.callback.trigger('qb-spawn:server:getOwnedHouses', cData and cData.citizenid) or {}
     buildLocations(cData, houses, false)
-    send('multichar:spawn:locations', { locations = spawnLocations, isNew = false })
+    send('multichar:spawn:locations', {
+        locations = spawnLocations, isNew = false,
+        previewBudgetMs = SceneRuntime.spawnPreviewBudgetMs(),
+    })
 end)
 
 local function openSpawnSelection(isNew)
@@ -70,7 +82,14 @@ local function openSpawnSelection(isNew)
     end
     MulticharSetClientMode('spawn', true)
     SetNuiFocus(true, true)
-    send('multichar:spawn:show', { visible = true, isNew = isNew == true })
+    -- The NUI races a timeout against every focus callback. It derives that
+    -- timeout from this figure instead of carrying its own copy of the flight
+    -- and streaming budgets, which is how it ended up timing out at 15s
+    -- against a preview allowed to take five times as long.
+    send('multichar:spawn:show', {
+        visible = true, isNew = isNew == true,
+        previewBudgetMs = SceneRuntime.spawnPreviewBudgetMs(),
+    })
     return true
 end
 
@@ -78,11 +97,14 @@ RegisterNetEvent('qb-spawn:client:openUI', function(value)
     if value == true then openSpawnSelection(false) end
 end)
 
+-- `reason` is what keeps the selector quiet while a player clicks through the
+-- list: an abandoned preview reports SceneRuntime.PREVIEW_SUPERSEDED, which
+-- the NUI treats as a non-event rather than a failed arrival.
 RegisterNUICallback('multichar:spawn:focus', function(data, cb)
     local location = spawnById[type(data) == 'table' and data.id or nil]
-    local ok, streamed = false, false
-    if location then ok, streamed = SceneRuntime.previewSpawn(location) end
-    cb({ ok = ok, streamed = streamed })
+    local ok, streamed, reason = false, false, 'that location is not on the list'
+    if location then ok, streamed, reason = SceneRuntime.previewSpawn(location) end
+    cb({ ok = ok, streamed = streamed, reason = reason })
 end)
 
 RegisterNUICallback('multichar:spawn:choose', function(data, cb)

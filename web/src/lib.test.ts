@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { characterName, isValidBirthdate, normalizeCharacters, wrapIndex } from "./lib";
+import {
+  characterName, isValidBirthdate, normalizeCharacters, SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS,
+  SPAWN_PREVIEW_HEADROOM_MS, spawnPreviewTimeout, wrapIndex,
+} from "./lib";
 
 describe("character payloads", () => {
   it("normalizes Lua empty objects and rejects malformed objects", () => {
@@ -23,5 +26,22 @@ describe("identity and navigation", () => {
   it("wraps carousel indexes", () => {
     expect(wrapIndex(0, -1, 4)).toBe(3);
     expect(wrapIndex(3, 1, 4)).toBe(0);
+  });
+});
+
+describe("spawn preview timeout", () => {
+  it("derives the timeout from the budget Lua reports, never from a constant of its own", () => {
+    expect(spawnPreviewTimeout(73_250)).toBe(73_250 + SPAWN_PREVIEW_HEADROOM_MS);
+    // The whole point: a longer Lua budget produces a longer timeout with no
+    // edit here. The old hardcoded 15s could not do that, which is why a slow
+    // world stream looked like a failed preview.
+    expect(spawnPreviewTimeout(120_000)).toBeGreaterThan(spawnPreviewTimeout(73_250));
+    expect(spawnPreviewTimeout(73_250)).toBeGreaterThan(73_250);
+  });
+
+  it("falls back to a bounded timeout for a missing or nonsensical budget", () => {
+    for (const value of [undefined, null, 0, -1, NaN, Infinity, "30000"]) {
+      expect(spawnPreviewTimeout(value)).toBe(SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS);
+    }
   });
 });
