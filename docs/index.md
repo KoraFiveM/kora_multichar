@@ -74,9 +74,26 @@ build` from the `web` directory.
   still decides whether a failure is worth a toast, and a timeout for a preview
   whose camera already went live is silent, because the player can see it did.
 - While the cover is up, `multichar:spawn:previewStage` names what is being
-  waited on (`streaming`, or `fallback` once the destination has been given up
-  on). Cosmetic, but a world stream can legitimately take tens of seconds and
-  one fixed line for all of it is indistinguishable from a hung panel.
+  waited on. Cosmetic, but a fixed line for the whole wait is indistinguishable
+  from a hung panel.
+- **The world is streamed by parking the (already hidden) player ped at the
+  preview point**, not by a bare focus position. The streamer loads the map
+  around the local player ped and only weakly around a focus, so the previous
+  approach — `SetFocusPosAndVel` plus a load scene, with the ped still wherever
+  it happened to be — waited a long time and then showed a black world, because
+  nothing had actually streamed at the camera. The ped is frozen, invisible and
+  collision-free for the whole cinematic mode, so moving it costs nothing
+  visually; `beginMode` records where it started and `endMode` puts it back, so
+  a player who disconnects mid-selection does not persist a preview coordinate
+  as their position.
+- The load scene is kept as an accelerant only. It is a hint, not a gate: the
+  wait ends as soon as `HasCollisionLoadedAroundEntity` reports the area is
+  there, and `Config.sceneLimits.worldStreamTimeoutMs` (8s) is a ceiling rather
+  than a target.
+- **There is no "safe spot" diversion.** The player is always shown the location
+  they picked. A destination that has not finished streaming when the camera
+  arrives pops its last props in behind the shot, which is a far better answer
+  than showing someone a city spawn they did not choose.
 
 The server publishes `LocalPlayer.state['qbmultichar:mode']` as `selection`,
 `spawn`, `creator`, or `nil`. qbhud observes it and stays hidden until the

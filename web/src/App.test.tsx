@@ -228,11 +228,15 @@ describe('spawn and studio', () => {
     message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
     message('multichar:spawn:show', { visible: true, previewBudgetMs: 70_000 });
 
+    expect(screen.getByText(/Streaming the world and finding a clear camera angle/i)).toBeTruthy();
+
     await act(async () => { message('multichar:spawn:previewStage', { stage: 'streaming' }); await Promise.resolve(); });
     expect(screen.getByText('Streaming the area around your arrival point')).toBeTruthy();
 
-    await act(async () => { message('multichar:spawn:previewStage', { stage: 'fallback' }); await Promise.resolve(); });
-    expect(screen.getByText(/settling on a safe spot/i)).toBeTruthy();
+    // An unknown stage falls back to the generic line rather than rendering
+    // nothing -- a blank subtitle reads as a broken panel.
+    await act(async () => { message('multichar:spawn:previewStage', { stage: 'something-new' }); await Promise.resolve(); });
+    expect(screen.getByText(/Streaming the world and finding a clear camera angle/i)).toBeTruthy();
   });
 
   it('stays silent when a preview is superseded by the next one the player picks', async () => {

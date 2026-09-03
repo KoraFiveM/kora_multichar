@@ -27,12 +27,17 @@ Config.sceneLimits = {
     -- -- so the budget is generous: a cold client on a slow disk can sit well
     -- past ten seconds on its first request of the session.
     streamTimeoutMs = 20000,
-    -- World streaming is a separate, longer budget because it is a *hint*, not
-    -- a requirement. The engine keeps pulling the map in around the focus
-    -- position whether or not the load scene ever reports itself loaded, so
-    -- this expiring shows the scene anyway rather than failing the preview.
-    -- See streamWorld in scene.lua.
-    worldStreamTimeoutMs = 30000,
+    -- World streaming. A CEILING, not a target: the wait ends as soon as
+    -- collision has loaded around the ped parked at the destination, which on a
+    -- warm client is a second or two. Expiring shows the scene anyway rather
+    -- than failing the preview -- the ped is there and the streamer is still
+    -- working, so the last of the map pops in behind the camera.
+    --
+    -- This was 30s, from when the preview waited on a load scene with the ped
+    -- still on the far side of the map: a signal that regularly never arrived,
+    -- so the budget had to be long enough to look like patience rather than a
+    -- hang. See streamWorld in scene.lua.
+    worldStreamTimeoutMs = 8000,
 }
 
 -- Cinematic travel between spawn previews. The camera lifts away from the

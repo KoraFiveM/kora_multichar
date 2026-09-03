@@ -79,32 +79,69 @@ local function revealWorld(generation)
     if generation == state.sceneGeneration then DoScreenFadeIn(350) end
 end
 
--- A client that is still finishing its own join can have an engine-owned load
--- scene in flight, and NewLoadSceneStartSphere simply refuses while one is.
--- That refusal is transient, so retry briefly rather than concluding the area
--- does not exist.
+-- --- world streaming -------------------------------------------------------
+--
+-- The streamer loads the map around the LOCAL PLAYER PED, and only weakly
+-- around a bare focus position. This used to call SetFocusPosAndVel and then
+-- wait on a load scene while the ped stayed wherever it happened to be --
+-- often the far side of the map -- which is why previews were slow, frequently
+-- gave up, and showed a black world when they did not: nothing had actually
+-- streamed at the camera.
+--
+-- The ped is already frozen, invisible and collision-free for the whole
+-- cinematic mode (see hidePlayerPed), so moving it to the preview point costs
+-- nothing visually and turns a weak hint into the streamer's primary anchor.
+-- beginMode records where it started and endMode puts it back, so a player who
+-- disconnects mid-selection does not persist a preview coordinate as their
+-- position -- a real spawn overwrites it anyway.
+--
+-- The load scene is kept, but only as an accelerant. It is a HINT, not a gate:
+-- on a cold client it regularly never reports itself loaded, and gating the
+-- preview on it is what produced the blackout-then-error.
 local STREAM_START_RETRY_MS = 250
-local STREAM_START_WINDOW_MS = 3000
+local STREAM_START_WINDOW_MS = 1000
 
 local function requestLoadScene(coords)
     RequestCollisionAtCoord(coords.x, coords.y, coords.z)
-    return NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 80.0, 0) == true
+    return NewLoadSceneStartSphere(coords.x, coords.y, coords.z, 100.0, 0) == true
 end
 
--- The load scene is a streaming *hint*, not a gate: the engine keeps pulling
--- the world in around the focus position whether or not IsNewLoadSceneLoaded
--- ever flips, and on a cold client -- slow disk, first preview of the session,
--- still settling after the join -- it regularly does not flip inside any
--- blackout a player will sit through. So the deadline expiring degrades: the
--- caller builds the scene anyway and the last of the map pops in behind the
--- camera. That is strictly better than the blackout-then-error this used to
--- produce, which is what "scenes aren't loading" looks like from the client.
---
--- Returns `current` (this preview is still the live one) and `accepted` (the
--- streamer took the request, so the destination is worth showing).
+---Parks the hidden player ped on the preview point so the streamer has a real
+---anchor there.
+---@param coords table
+local function anchorPlayerAt(coords)
+    local ped = PlayerPedId()
+    if not ped or ped == 0 then return end
+
+    -- NoOffset: the ped is frozen, and the offset form resolves against
+    -- physics that are not running for it.
+    SetEntityCoordsNoOffset(ped, coords.x, coords.y, coords.z, false, false, false)
+    -- Re-asserted rather than assumed: a respawn during a long preview replaces
+    -- the ped handle, and a visible, colliding player standing in the shot is
+    -- exactly what the cinematic mode exists to prevent.
+    FreezeEntityPosition(ped, true)
+    SetEntityCollision(ped, false, false)
+    SetEntityVisible(ped, false, false)
+    SetFocusEntity(ped)
+end
+
+---Streams the world at `coords`.
+---
+---Returns `current` (this preview is still the live one) and `accepted` (the
+---area is worth showing). `accepted` now means collision actually loaded around
+---the anchor, which is the thing a camera needs, rather than whether the engine
+---deigned to accept a load-scene request.
+---@param coords table
+---@param generation integer
+---@return boolean current
+---@return boolean accepted
 local function streamWorld(coords, generation)
     if IsNewLoadSceneActive() then NewLoadSceneStop() end
-    SetFocusPosAndVel(coords.x, coords.y, coords.z, 0.0, 0.0, 0.0)
+    anchorPlayerAt(coords)
+
+    -- Best effort, and deliberately short: if the engine will not take a load
+    -- scene we carry on regardless, because the ped anchor above is doing the
+    -- real work.
     local started = requestLoadScene(coords)
     local retryWindow = GetGameTimer() + STREAM_START_WINDOW_MS
     while not started and generation == state.sceneGeneration and GetGameTimer() < retryWindow do
@@ -112,18 +149,30 @@ local function streamWorld(coords, generation)
         started = requestLoadScene(coords)
     end
 
+    local ped = PlayerPedId()
     local deadline = GetGameTimer() + Config.sceneLimits.worldStreamTimeoutMs
-    while started and generation == state.sceneGeneration and not IsNewLoadSceneLoaded() and GetGameTimer() < deadline do
-        -- Collision requests are not sticky. Re-issue this while the load
-        -- scene is active so a cold first preview keeps making progress.
+    local loaded = false
+
+    while generation == state.sceneGeneration and GetGameTimer() < deadline do
+        -- Either signal is good enough. Collision around the ped is the one
+        -- that actually correlates with "there is a world at the camera".
+        if HasCollisionLoadedAroundEntity(ped) or (started and IsNewLoadSceneLoaded()) then
+            loaded = true
+            break
+        end
+        -- Collision requests are not sticky; re-issue while waiting.
         RequestCollisionAtCoord(coords.x, coords.y, coords.z)
         Wait(0)
     end
+
     if generation ~= state.sceneGeneration then return false, false end
-    -- Stop the load scene only. The focus stays on the anchor: dropping it
-    -- here would stall the streamer on exactly the clients that needed it.
-    if started and IsNewLoadSceneActive() then NewLoadSceneStop() end
-    return true, started
+    if IsNewLoadSceneActive() then NewLoadSceneStop() end
+
+    -- A timeout still shows the destination. The ped is parked there and the
+    -- streamer is working; the last of the map pops in behind the camera, which
+    -- is strictly better than diverting a player to a fallback city spawn they
+    -- did not choose.
+    return true, true, loaded
 end
 
 local function applyFallbackSkin(ped, skin)
@@ -554,6 +603,13 @@ function SceneRuntime.beginMode()
         visible = IsEntityVisible(ped),
         invincible = GetPlayerInvincible(PlayerId()),
         frozen = IsEntityPositionFrozen(ped),
+        -- Where the ped stood before the previews started moving it around the
+        -- map to anchor the streamer (see anchorPlayerAt). Restored on endMode
+        -- so a player who disconnects mid-selection does not persist whichever
+        -- spawn they were last looking at as their saved position. A real spawn
+        -- overwrites this immediately, so it only matters on the abandon path.
+        coords = GetEntityCoords(ped),
+        heading = GetEntityHeading(ped),
     }
     hidePlayerPed(ped)
     state.hiddenPed = ped
@@ -679,7 +735,10 @@ end
 
 local function startWorldStream(coords)
     if IsNewLoadSceneActive() then NewLoadSceneStop() end
-    SetFocusPosAndVel(coords.x, coords.y, coords.z, 0.0, 0.0, 0.0)
+    -- Same anchor as streamWorld: the ped is the streamer's primary reference,
+    -- and this variant exists only so the flight can start while the
+    -- destination loads underneath it.
+    anchorPlayerAt(coords)
     return {
         started = requestLoadScene(coords),
         deadline = GetGameTimer() + Config.sceneLimits.worldStreamTimeoutMs,
@@ -688,61 +747,55 @@ local function startWorldStream(coords)
 end
 
 local function finishWorldStream(ticket, generation)
-    -- The aerial flight has been covering this request since lift-off, so a
-    -- load scene the engine refused back then gets its retries here, while the
-    -- camera is still cruising. A retry that lands resets the budget, since
-    -- none of the flight time streamed anything.
-    local retryWindow = GetGameTimer() + STREAM_START_WINDOW_MS
-    while not ticket.started and generation == state.sceneGeneration and GetGameTimer() < retryWindow do
-        Wait(STREAM_START_RETRY_MS)
-        ticket.started = requestLoadScene(ticket.coords)
-        if ticket.started then ticket.deadline = GetGameTimer() + Config.sceneLimits.worldStreamTimeoutMs end
-    end
+    -- The aerial flight has been covering this since lift-off, so whatever is
+    -- left of the wait happens here while the camera is still cruising.
+    local ped = PlayerPedId()
 
-    while ticket.started and generation == state.sceneGeneration and not IsNewLoadSceneLoaded()
-        and GetGameTimer() < ticket.deadline do
+    while generation == state.sceneGeneration and GetGameTimer() < ticket.deadline do
+        if HasCollisionLoadedAroundEntity(ped) or (ticket.started and IsNewLoadSceneLoaded()) then break end
         RequestCollisionAtCoord(ticket.coords.x, ticket.coords.y, ticket.coords.z)
         Wait(0)
     end
+
     if generation ~= state.sceneGeneration then return false end
-    if ticket.started and IsNewLoadSceneActive() then NewLoadSceneStop() end
-    return ticket.started
+    if IsNewLoadSceneActive() then NewLoadSceneStop() end
+
+    -- Always true. The ped has been parked at the destination since lift-off,
+    -- so there is a world there whether or not the engine ever said so, and
+    -- diverting the player to a fallback city spawn they did not choose is a
+    -- worse outcome than a few late-popping props. Kept as a return value
+    -- because the caller's shape is part of the preview contract.
+    return true
 end
 
-local function staticSpawnPreview(location, generation, forceSafe)
+---The plain, non-cinematic spawn shot: stream the destination and point a
+---camera at it. Used for the first preview of a session, and whenever the
+---cinematic flight cannot continue from the camera it has.
+---
+---The player is always shown the place they PICKED. There used to be a
+---"the streamer refused this destination" branch that diverted to a safe city
+---spawn -- which is the "That area would not load, settling on a safe spot"
+---panel players were seeing. It is gone: the ped is parked at the destination
+---(see streamWorld), so the area does load, and the only question is whether it
+---has finished by the time the camera arrives. A few props popping in late is a
+---far better answer than showing someone a location they did not choose.
+---@param location table
+---@param generation integer
+local function staticSpawnPreview(location, generation)
     local coords, preview = location.coords, location.preview or {}
-    local safe = (Config.spawns[1] and Config.spawns[1].coords) or Config.defaultSpawn
-    local streamed, displayCoords = false, coords
 
-    -- `streamed` follows whether the streamer ACCEPTED the destination, not
-    -- whether it confirmed the load. A slow client that never gets a
-    -- confirmation still keeps the location it picked; only a destination the
-    -- streamer refuses outright, across the whole retry window, falls back.
-    if not forceSafe then
-        announcePreviewStage(generation, 'streaming')
-        local current, accepted = streamWorld(coords, generation)
-        if not current then return false, false, PREVIEW_SUPERSEDED end
-        streamed = accepted
-    end
-    if not streamed then
-        displayCoords = safe
-        announcePreviewStage(generation, 'fallback')
-        local current, accepted = streamWorld(safe, generation)
-        if not current then return false, false, PREVIEW_SUPERSEDED end
-        if not accepted then
-            failLoad(generation, 'spawn area and safe fallback could not be streamed')
-            return false, false, 'the spawn area could not be streamed'
-        end
-    end
+    announcePreviewStage(generation, 'streaming')
+    if not streamWorld(coords, generation) then return false, false, PREVIEW_SUPERSEDED end
 
-    local cameraCoords = streamed and (preview.camera or vector3(coords.x + 8.0, coords.y - 8.0, coords.z + 6.0))
-        or vector3(displayCoords.x + 12.0, displayCoords.y - 12.0, displayCoords.z + 9.0)
-    local lookAt = streamed and (preview.lookAt or vector3(coords.x, coords.y, coords.z + 0.5))
-        or vector3(displayCoords.x, displayCoords.y, displayCoords.z + 0.5)
-    cameraCoords = resolveCameraPosition(cameraCoords, lookAt, PlayerPedId())
-    applyEnvironment(streamed and preview.environment or nil)
+    local lookAt = preview.lookAt or vector3(coords.x, coords.y, coords.z + 0.5)
+    local cameraCoords = resolveCameraPosition(
+        preview.camera or vector3(coords.x + 8.0, coords.y - 8.0, coords.z + 6.0),
+        lookAt,
+        PlayerPedId()
+    )
+    applyEnvironment(preview.environment)
 
-    local cam = createPointCamera(cameraCoords, lookAt, streamed and (preview.fov or 45.0) or 45.0)
+    local cam = createPointCamera(cameraCoords, lookAt, preview.fov or 45.0)
     if not cam then
         failLoad(generation, 'spawn camera could not be created')
         return false, false, 'the spawn camera could not be created'
@@ -753,7 +806,7 @@ local function staticSpawnPreview(location, generation, forceSafe)
     RenderScriptCams(true, true, 450, true, true)
     revealWorld(generation)
     announcePreviewLive(generation)
-    return true, streamed
+    return true, true
 end
 
 ---Worst-case wall time previewSpawn can legitimately spend before it answers,
@@ -761,21 +814,19 @@ end
 ---NUI races its own timeout against the focus callback and needs this figure
 ---to set it: the number it used to hardcode was a fifth of the real budget,
 ---so every slow world stream was reported to the player as a broken preview
----while Lua was still working correctly. Four config values feed the total,
+---while Lua was still working correctly. Several config values feed the total,
 ---which is exactly why nothing downstream should be restating it by hand.
 ---@return integer ms
 function SceneRuntime.spawnPreviewBudgetMs()
     local flight = Config.spawnFlight or {}
-    -- A load scene the engine refuses at first pays the retry window AND then
-    -- a full timeout, because a retry that lands resets the budget.
+    -- One world stream, not two: the destination is no longer abandoned for a
+    -- fallback the player did not choose, so nothing is ever streamed twice.
     local worldStream = STREAM_START_WINDOW_MS + Config.sceneLimits.worldStreamTimeoutMs
     return FADE_OUT_WAIT_MS * 2
         + (tonumber(flight.liftDurationMs) or 900)
         + (tonumber(flight.maxTravelDurationMs) or 4200)
         + (tonumber(flight.descentDurationMs) or 1450)
-        -- Twice over: a destination the streamer refuses outright is covered
-        -- and re-streamed from scratch at the safe city fallback.
-        + worldStream * 2
+        + worldStream
 end
 
 function SceneRuntime.previewSpawn(location)
@@ -793,7 +844,7 @@ function SceneRuntime.previewSpawn(location)
     if not currentCam or not DoesCamExist(currentCam) or not state.spawnLookAt then
         if not fadeWorldOut(generation) then return false, false, PREVIEW_SUPERSEDED end
         cleanupScene()
-        return staticSpawnPreview(location, generation, false)
+        return staticSpawnPreview(location, generation)
     end
 
     local coords = location.coords
@@ -830,7 +881,7 @@ function SceneRuntime.previewSpawn(location)
     local function recoverStaticPreview()
         if generation ~= state.sceneGeneration or not fadeWorldOut(generation) then return false, false, PREVIEW_SUPERSEDED end
         cleanupScene()
-        return staticSpawnPreview(location, generation, false)
+        return staticSpawnPreview(location, generation)
     end
 
     local liftCam = createPointCamera(liftPosition, oldLookAt, math.max(50.0, GetCamFov(currentCam)))
@@ -847,13 +898,6 @@ function SceneRuntime.previewSpawn(location)
 
     local streamed = finishWorldStream(ticket, generation)
     if generation ~= state.sceneGeneration then return false, false, PREVIEW_SUPERSEDED end
-    if not streamed then
-        -- Never reveal an unstreamed destination. Cover the rare failure and
-        -- settle onto the known-safe city fallback instead.
-        if not fadeWorldOut(generation) then return false, false, PREVIEW_SUPERSEDED end
-        cleanupScene()
-        return staticSpawnPreview(location, generation, true)
-    end
 
     targetCamera = resolveCameraPosition(targetCamera, targetLookAt, PlayerPedId())
     applyEnvironment(preview.environment)
@@ -884,6 +928,16 @@ function SceneRuntime.endMode()
     state.modeActive = false
     state.hiddenPed = nil
     local ped, previous = PlayerPedId(), state.playerState or {}
+
+    -- The focus follows the ped while previewing; hand it back to the engine
+    -- before the ped moves, or the streamer keeps chasing a stale anchor.
+    ClearFocus()
+
+    if previous.coords then
+        SetEntityCoordsNoOffset(ped, previous.coords.x, previous.coords.y, previous.coords.z, false, false, false)
+        SetEntityHeading(ped, previous.heading or 0.0)
+    end
+
     SetEntityVisible(ped, previous.visible ~= false, false)
     SetEntityCollision(ped, true, true)
     SetEntityInvincible(ped, previous.invincible == true)

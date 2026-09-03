@@ -120,9 +120,16 @@ H.test('the preview budget covers the whole flight plus world streaming', functi
 
     H.truthy(budget > floor, 'the budget must exceed the flight plus one full world-stream timeout')
     -- The number the NUI used to hardcode. Keeping this here is the point: a
-    -- preview is allowed to take far longer than the UI once believed.
+    -- preview is allowed to take longer than the UI once believed.
     H.truthy(budget > 15000, 'the real budget is nowhere near the old 15s NUI timeout')
-    H.equal(budget, 73250, 'shipped-default preview budget')
+    H.equal(budget, 16250, 'shipped-default preview budget')
+
+    -- Down from 73250. The world-stream ceiling dropped from 30s to 8s once the
+    -- preview started parking the player ped at the destination (the streamer's
+    -- primary anchor) instead of waiting on a load scene from across the map,
+    -- and the budget counts ONE stream rather than two now that a slow area is
+    -- never abandoned for a fallback the player did not choose.
+    H.truthy(budget < 20000, 'a preview that needs 20s is a bug, not patience')
 end)
 
 H.test('the preview budget is derived from config, so a raised timeout raises it', function()

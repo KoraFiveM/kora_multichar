@@ -255,7 +255,6 @@ export function App() {
 
 const PREVIEW_STAGE_TEXT: Record<string, string> = {
   streaming: "Streaming the area around your arrival point",
-  fallback: "That area would not load — settling on a safe spot in the city",
 };
 
 function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn"; previewStage?: string | null }) {
