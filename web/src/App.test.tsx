@@ -145,6 +145,34 @@ describe('spawn and studio', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('releases the spawn selector when an arrival preview fails', async () => {
+    nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
+      ? Promise.resolve({ ok: false })
+      : Promise.resolve({}));
+    render(<App />);
+    message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
+    message('multichar:spawn:show', { visible: true });
+
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.queryByText('Scouting your arrival')).toBeNull();
+    expect(screen.getByText('That arrival could not be previewed. You can still spawn here.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: /spawn here/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
+  it('releases the spawn selector when an arrival preview never answers', async () => {
+    nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
+      ? new Promise(() => {})
+      : Promise.resolve({}));
+    render(<App />);
+    message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
+    message('multichar:spawn:show', { visible: true });
+
+    await act(async () => { vi.advanceTimersByTime(15_000); await Promise.resolve(); });
+    expect(screen.queryByText('Scouting your arrival')).toBeNull();
+    expect(screen.getByText('Arrival preview timed out. You can still spawn here.')).toBeTruthy();
+    expect((screen.getByRole('button', { name: /spawn here/i }) as HTMLButtonElement).disabled).toBe(false);
+  });
+
   it('sends scene metadata and placement edits through the studio action channel', () => {
     const draft = {
       id: 'test_scene', label: 'Test Scene', priority: 0, selectors: [], environment: { hour: 18, minute: 0, weather: 'CLEAR' },

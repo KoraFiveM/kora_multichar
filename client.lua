@@ -279,11 +279,12 @@ end)
 
 -- qbcore fires this only on successful character creation, so it is the one
 -- place that knows the spawn about to run belongs to a brand-new character.
--- Both branches below end in finishAt, which consumes the flag.
+-- A new character has no saved location to choose from: land at the configured
+-- first-arrival point immediately. In particular, do not open the cinematic
+-- spawn picker here -- its preview is optional for returning players but must
+-- never be able to hold up a newly created character's first spawn.
 RegisterNetEvent('qb-multicharacter:client:closeNUIdefault', function()
     pendingNewCharacter = true
-    if type(MulticharOpenNewSpawn) == 'function' and MulticharOpenNewSpawn() then return end
-    -- Defensive compatibility fallback if spawn.lua failed to initialize.
     finishAt(Config.defaultSpawn)
 end)
 

@@ -78,8 +78,8 @@ Config.creator = {
 }
 
 -- Where a brand-new character lands (real qb-multicharacter's
--- Config.DefaultSpawn, used by the closeNUIdefault path -- no apartments
--- module exists here, so every new character takes this route).
+-- Config.DefaultSpawn, used by the closeNUIdefault path). New characters
+-- spawn here directly; they never enter the live-preview spawn selector.
 Config.defaultSpawn = vector4(-269.4, -955.3, 31.2, 205.8)
 
 -- The spawn-picker's fixed location list, always offered alongside "last

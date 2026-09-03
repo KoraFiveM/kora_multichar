@@ -51,9 +51,10 @@ build` from the `web` directory.
   along the authored destination camera's approach. `Config.spawnFlight`
   controls altitude, speed, and the three transition timings. A bounded
   ten-second load falls back behind a blackout to a safe overview camera.
-- New characters use the same mandatory carousel (including a **First
-  Arrival** option). qbclothing's mandatory first-character creator waits for
-  the chosen spawn to complete before opening.
+- New characters bypass the spawn carousel and land immediately at
+  `Config.defaultSpawn` (the configured first-arrival point). qbclothing's
+  mandatory first-character creator waits for that spawn to complete before
+  opening.
 
 The server publishes `LocalPlayer.state['qbmultichar:mode']` as `selection`,
 `spawn`, `creator`, or `nil`. qbhud observes it and stays hidden until the

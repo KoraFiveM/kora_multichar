@@ -90,7 +90,8 @@ H.test('spawn exit is mandatory and every success uses the central finalizer', f
     H.truthy(spawn:find("RegisterNUICallback('multichar:spawn:exit'", 1, true), 'spawn escape callback exists')
     H.truthy(spawn:find('mandatory = true', 1, true), 'spawn escape must refuse cancellation')
     H.truthy(spawn:find('MulticharFinishSpawn(location.coords)', 1, true), 'all location types use central cleanup')
-    H.truthy(spawn:find('function MulticharOpenNewSpawn()', 1, true), 'new characters must enter the mandatory spawn carousel too')
+    H.falsy(spawn:find('function MulticharOpenNewSpawn()', 1, true), 'new characters must not open the spawn carousel')
+    H.truthy(client:find('finishAt(Config.defaultSpawn)', 1, true), 'new characters must spawn at the configured first-arrival point')
     H.truthy(client:find('SceneRuntime.endMode()', 1, true) and client:find('leaveServerMode()', 1, true), 'central finalizer clears client and server modes')
 end)
 

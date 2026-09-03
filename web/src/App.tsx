@@ -10,6 +10,7 @@ import type { Character, NuiMessage, SceneDraft, SpawnLocation } from "./types";
 
 type Stage = "hidden" | "characters" | "spawn" | "creator";
 type CreatorPayload = { draft?: SceneDraft; scenes?: Record<string, SceneDraft>; cursor?: boolean; error?: string };
+const SPAWN_PREVIEW_TIMEOUT_MS = 15_000;
 
 function roleLabel(role: Character["job"], fallback: string) {
   return role?.label || role?.name || fallback;
@@ -114,15 +115,32 @@ export function App() {
     const initial = !spawnCameraReady.current;
     if (initial) setPreviewing(true);
     else setSpawnTraveling(true);
-    fetchNui<{ ok?: boolean }>("multichar:spawn:focus", { id: spawn.id }).then((result) => {
+    let timeoutId = 0;
+    const timeout = new Promise<null>((resolve) => {
+      timeoutId = window.setTimeout(() => resolve(null), SPAWN_PREVIEW_TIMEOUT_MS);
+    });
+    Promise.race([fetchNui<{ ok?: boolean }>("multichar:spawn:focus", { id: spawn.id }), timeout]).then((result) => {
       if (!active) return;
+      if (result === null) {
+        setToast("Arrival preview timed out. You can still spawn here.");
+        return;
+      }
       if (result?.ok === false) {
-        setToast("That arrival could not be previewed safely. Try another location.");
+        setToast("That arrival could not be previewed. You can still spawn here.");
         return;
       }
       spawnCameraReady.current = true;
+    }).catch(() => {
+      if (active) setToast("That arrival could not be previewed. You can still spawn here.");
+    }).finally(() => {
+      window.clearTimeout(timeoutId);
+      if (!active) return;
+      // The preview is visual only. Whether it fails or its callback is
+      // interrupted, always release the selector so a player cannot remain
+      // indefinitely on “Scouting your arrival”.
       if (initial) setPreviewing(false);
-    }).finally(() => { if (active) setSpawnTraveling(false); });
+      setSpawnTraveling(false);
+    });
     return () => { active = false; };
   }, [stage, spawn?.id]);
 

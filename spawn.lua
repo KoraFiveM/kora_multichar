@@ -78,12 +78,6 @@ RegisterNetEvent('qb-spawn:client:openUI', function(value)
     if value == true then openSpawnSelection(false) end
 end)
 
-function MulticharOpenNewSpawn()
-    buildLocations(nil, nil, true)
-    send('multichar:spawn:locations', { locations = spawnLocations, isNew = true })
-    return openSpawnSelection(true)
-end
-
 RegisterNUICallback('multichar:spawn:focus', function(data, cb)
     local location = spawnById[type(data) == 'table' and data.id or nil]
     local ok, streamed = false, false
