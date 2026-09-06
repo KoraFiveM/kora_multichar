@@ -47,6 +47,9 @@ local heldLevel, permissionCalls = {}, {}
 local commandDefs, notifications = {}, {}
 
 _G.QB = {
+    util = { isFiniteNumber = function(value)
+        return type(value) == 'number' and value == value and value > -math.huge and value < math.huge
+    end },
     callback = { register = function(name, callback) callbacks[name] = callback end },
     commands = { add = function(name, _, _, _, handler, opts) commandDefs[name] = { handler = handler, opts = opts or {} } end },
     notify = { send = function(src, payload) notifications[#notifications + 1] = { src = src, payload = payload } end },

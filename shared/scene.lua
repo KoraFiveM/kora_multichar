@@ -10,9 +10,7 @@ local ALLOWED_CUES = {
     vehicleRoute = true,
 }
 
-local function finite(value)
-    return type(value) == 'number' and value == value and value ~= math.huge and value ~= -math.huge
-end
+local finite = QB.util.isFiniteNumber
 
 local function array(value)
     if type(value) ~= 'table' then return false end
