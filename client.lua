@@ -308,11 +308,6 @@ RegisterNetEvent('qbmultichar:client:sceneRemove', function(id)
     if currentMode == 'selection' and selectedCharacter then previewCharacter(selectedCharacter.citizenid) end
 end)
 
-RegisterNUICallback('multichar:getTheme', function(_, cb)
-    local ok, tokens = pcall(function() return QB.theme.tokens() end)
-    cb(ok and tokens or {})
-end)
-
 RegisterNUICallback('multichar:preview', function(data, cb)
     local citizenid = type(data) == 'table' and data.citizenid
     if type(citizenid) == 'string' and charactersById[citizenid] then previewCharacter(citizenid) end
@@ -418,11 +413,6 @@ CreateThread(function()
         if value == false then CreateThread(returnToCharacterSelect) end
     end)
     TriggerEvent('qb-multicharacter:client:chooseChar')
-end)
-
-CreateThread(function()
-    local ok, tokens = pcall(function() return QB.theme.tokens() end)
-    if ok then send('multichar:theme', tokens) end
 end)
 
 AddEventHandler('onClientResourceStop', function(resource)

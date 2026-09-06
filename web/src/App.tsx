@@ -4,7 +4,7 @@ import {
   Crosshair, Fingerprint, Flag, Info, LoaderCircle, LogOut, MapPin, MousePointer2, Move3d,
   Plane, Play, Plus, Save, Sparkles, Trash2, UserPlus, Users, Wallet, X,
 } from "lucide-react";
-import { applyTheme, fetchNui } from "./nui";
+import { fetchNui } from "./nui";
 import {
   characterName, isValidBirthdate, money, normalizeCharacters, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
 } from "./lib";
@@ -68,8 +68,7 @@ export function App() {
   useEffect(() => {
     const listener = (event: MessageEvent<NuiMessage>) => {
       const { action, data } = event.data || {};
-      if (action === "multichar:theme") applyTheme(data);
-      else if (action === "multichar:show") {
+      if (action === "multichar:show") {
         const payload = data as { characters?: unknown; maxCharacters?: number };
         setCharacters(normalizeCharacters(payload?.characters));
         setMaxCharacters(Number(payload?.maxCharacters) || 5);
@@ -128,7 +127,6 @@ export function App() {
       }
     };
     window.addEventListener("message", listener);
-    fetchNui("multichar:getTheme").then(applyTheme);
     return () => window.removeEventListener("message", listener);
   }, []);
 
@@ -195,7 +193,7 @@ export function App() {
   const move = (delta: number) => {
     if (stage === "characters" && !creating && !deleting && slideCount) {
       setPreviewing(true); setIndex((value) => wrapIndex(value, delta, slideCount)); setDetails(false);
-    } else if (stage === "spawn" && spawns.length && !previewing && !spawnTraveling) {
+    } else if (stage === "spawn" && spawns.length && !busy) {
       setSpawnIndex((value) => wrapIndex(value, delta, spawns.length));
     }
   };
@@ -232,7 +230,6 @@ export function App() {
 
   return (
     <div className={`app stage-${stage}`}>
-      <div className="vignette" />
       {toast && <div className="toast"><Sparkles size={16} /><span>{toast}</span><button onClick={() => setToast(null)}><X size={15} /></button></div>}
       {stage === "characters" && (
         <CharacterScreen
@@ -386,13 +383,13 @@ function SpawnScreen({ location, index, count, busy, previewing, traveling, onMo
     <header className="topbar"><div><span className="eyebrow">ARRIVAL</span><h1>Where do you wake up?</h1></div><span className="mandatory-chip">Selection required</span></header>
     {traveling && <div className="travel-indicator" role="status"><Plane size={15} /><span>Flying to <strong>{location?.label}</strong></span></div>}
     <section className="carousel-shell spawn-carousel">
-      <button className="nav-button" disabled={count <= 1 || traveling || previewing} onClick={() => onMove(-1)} aria-label="Previous location"><ChevronLeft /></button>
+      <button className="nav-button" disabled={count <= 1 || busy} onClick={() => onMove(-1)} aria-label="Previous location"><ChevronLeft /></button>
       <div className="identity-card spawn-card">
         <div className="location-icon"><MapPin size={22} /></div>
         <div className="identity-copy"><span className="eyebrow">LOCATION {count ? index + 1 : 0} OF {count}</span><h2>{location?.label || "Loading locations"}</h2><p>{location?.description || "Preparing a safe arrival point…"}</p></div>
         <button className="button primary" disabled={!location || busy || previewing || traveling} onClick={onAccept}>{busy ? <LoaderCircle className="spin" size={17} /> : <MapPin size={17} />}Spawn here</button>
       </div>
-      <button className="nav-button" disabled={count <= 1 || traveling || previewing} onClick={() => onMove(1)} aria-label="Next location"><ChevronRight /></button>
+      <button className="nav-button" disabled={count <= 1 || busy} onClick={() => onMove(1)} aria-label="Next location"><ChevronRight /></button>
     </section>
     <div className="key-hints"><kbd>←</kbd><kbd>→</kbd><span>{traveling ? "Flying to location…" : "Preview location"}</span><kbd>Enter</kbd><span>Spawn</span></div>
   </>;

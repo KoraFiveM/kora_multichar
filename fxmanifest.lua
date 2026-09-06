@@ -7,6 +7,7 @@ author 'Jamie'
 version '3.0.0'
 description 'Cinematic character selection, live spawn previews, and scene studio for qbcore'
 
+dependency 'qbtheme'
 dependency 'qblib'
 dependency 'qbcore'
 
@@ -27,7 +28,7 @@ files {
     'web/build/**/*',
 }
 
--- Required to reach QB.theme -- see qblib's own AGENTS.md for why this is how
+-- Required to reach qblib APIs -- see qblib's own AGENTS.md for why this is how
 -- a consumer resource pulls in the QB proxy (init.lua). NUI messaging itself
 -- goes through the raw natives (SendNUIMessage/RegisterNUICallback) instead
 -- of QB.nui.* -- this resource owns its own frame now, and QB.nui.* would
@@ -43,6 +44,7 @@ shared_scripts {
 server_script 'server.lua'
 
 client_scripts {
+    '@qbtheme/client/bridge.lua',
     'scene.lua',
     'client.lua',
     'spawn.lua',

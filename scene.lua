@@ -853,7 +853,20 @@ function SceneRuntime.previewSpawn(location)
     local targetCamera = preview.camera or vector3(coords.x + 8.0, coords.y - 8.0, coords.z + 6.0)
     local settings = Config.spawnFlight or {}
     local oldLookAt = state.spawnLookAt
-    local oldPosition = state.spawnPosition or GetCamCoord(currentCam)
+    -- A new location can be selected while lift/travel interpolation is still
+    -- running. Capture the rendered camera, not the last completed preview,
+    -- so the replacement route begins exactly where the player is looking.
+    local oldPosition = GetFinalRenderedCamCoord()
+    if not oldPosition or (oldPosition.x == 0.0 and oldPosition.y == 0.0 and oldPosition.z == 0.0) then
+        oldPosition = state.spawnPosition or GetCamCoord(currentCam)
+    end
+    local handoffCam = createPointCamera(oldPosition, oldLookAt, math.max(50.0, GetCamFov(currentCam)))
+    if handoffCam then
+        destroyCameraKey('spawnHandoff')
+        state.cameras.spawnHandoff = handoffCam
+        SetCamActive(handoffCam, true)
+        currentCam = handoffCam
+    end
     local dx, dy, dz = targetLookAt.x - oldLookAt.x, targetLookAt.y - oldLookAt.y, targetLookAt.z - oldLookAt.z
     local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
     local altitude = math.min(tonumber(settings.maxAltitude) or 420.0,
@@ -908,6 +921,7 @@ function SceneRuntime.previewSpawn(location)
     if not waitCameraTransition(settings.descentDurationMs or 1450, generation) then return false, false, PREVIEW_SUPERSEDED end
 
     destroyCameraKey('spawn')
+    destroyCameraKey('spawnHandoff')
     destroyCameraKey('spawnLift')
     destroyCameraKey('spawnTravel')
     state.cameras.spawnNext = nil

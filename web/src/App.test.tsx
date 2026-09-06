@@ -7,10 +7,9 @@ import { SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS } from './lib';
 
 const nui = vi.hoisted(() => ({
   fetch: vi.fn(() => Promise.resolve({})),
-  theme: vi.fn(),
 }));
 
-vi.mock('./nui', () => ({ fetchNui: nui.fetch, applyTheme: nui.theme }));
+vi.mock('./nui', () => ({ fetchNui: nui.fetch }));
 
 function message(action: string, data: unknown) {
   act(() => window.dispatchEvent(new MessageEvent('message', { data: { action, data } })));
@@ -28,7 +27,6 @@ beforeEach(() => {
   vi.useFakeTimers();
   nui.fetch.mockClear();
   nui.fetch.mockImplementation(() => Promise.resolve({}));
-  nui.theme.mockClear();
 });
 
 afterEach(() => {
@@ -108,10 +106,11 @@ describe('character selection', () => {
 });
 
 describe('spawn and studio', () => {
-  it('focuses the selected live spawn behind a blackout, refuses Escape, and confirms explicitly', async () => {
+  it('focuses the selected live spawn without obscuring the scene, allows Escape, and confirms explicitly', async () => {
     render(<App />);
     message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
     message('multichar:spawn:show', { visible: true });
+    expect(document.querySelector('.vignette')).toBeNull();
     expect(nui.fetch).toHaveBeenCalledWith('multichar:spawn:focus', { id: 'legion' });
     expect(screen.getByText('Scouting your arrival')).toBeTruthy();
     await act(async () => { await Promise.resolve(); });
@@ -123,7 +122,7 @@ describe('spawn and studio', () => {
     expect(nui.fetch).toHaveBeenCalledWith('multichar:spawn:choose', { id: 'legion' });
   });
 
-  it('keeps destination flyovers visible and locks navigation until the camera lands', async () => {
+  it('keeps destination flyovers visible and lets navigation supersede them', async () => {
     const resolutions: Array<(value: { ok?: boolean }) => void> = [];
     nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
       ? new Promise((resolve) => resolutions.push(resolve))
@@ -140,7 +139,7 @@ describe('spawn and studio', () => {
     expect(screen.getByRole('heading', { name: 'Paleto Bay' })).toBeTruthy();
     expect(screen.getByRole('status').textContent).toContain('Flying to Paleto Bay');
     expect(screen.queryByText('Scouting your arrival')).toBeNull();
-    expect((screen.getByRole('button', { name: 'Next location' }) as HTMLButtonElement).disabled).toBe(true);
+    expect((screen.getByRole('button', { name: 'Next location' }) as HTMLButtonElement).disabled).toBe(false);
 
     await act(async () => { resolutions.shift()?.({ ok: true }); await Promise.resolve(); });
     expect(screen.queryByRole('status')).toBeNull();
