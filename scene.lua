@@ -28,7 +28,7 @@ local function entityExists(entity)
 end
 
 local function loadModel(model)
-    local hash = type(model) == 'number' and model or GetHashKey(model)
+    local hash = type(model) == 'number' and model or joaat(model)
     if not IsModelValid(hash) then return nil end
     RequestModel(hash)
     local deadline = GetGameTimer() + Config.sceneLimits.streamTimeoutMs

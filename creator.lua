@@ -113,7 +113,7 @@ local function validateDraft()
     local normalized, err = SceneSchema.validate(creator.draft.id, creator.draft, Config.sceneLimits)
     if not normalized then return nil, err end
     for _, entity in ipairs(normalized.entities) do
-        local hash = type(entity.model) == 'number' and entity.model or GetHashKey(entity.model)
+        local hash = type(entity.model) == 'number' and entity.model or joaat(entity.model)
         if not IsModelInCdimage(hash) or not IsModelValid(hash) then
             return nil, ('entity %s uses an invalid base-game model'):format(entity.id)
         end
