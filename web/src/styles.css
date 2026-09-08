@@ -21,11 +21,12 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .icon-button:hover { border-color: hsl(var(--brand-border)); color: hsl(var(--foreground)); background: hsl(var(--surface-hover)); }
 .scene-label { position: absolute; z-index: 1; top: 31px; left: 50%; display: flex; align-items: center; gap: 7px; transform: translateX(-50%); border: 1px solid hsl(var(--border) / .75); border-radius: 999px; padding: 6px 11px; background: hsl(var(--card) / .75); color: hsl(var(--muted-foreground)); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .carousel-shell { position: absolute; z-index: 2; left: 50%; bottom: 52px; display: flex; align-items: center; gap: 0; transform: translateX(-50%); }
-.nav-button { z-index: 3; display: grid; flex: none; width: 46px; height: 46px; place-items: center; border: 1px solid hsl(var(--border)); border-radius: 999px; background: hsl(var(--card) / .94); cursor: pointer; box-shadow: 0 10px 26px rgb(0 0 0 / .46), inset 0 1px hsl(0 0% 100% / .05); transition: transform .16s, border-color .16s, background .16s; }
+.nav-button { z-index: 3; display: grid; flex: none; width: 46px; height: 46px; place-items: center; border: 1px solid hsl(var(--border)); border-radius: 999px; padding: 0; background: hsl(var(--card) / .94); color: hsl(var(--foreground) / .9); cursor: pointer; box-shadow: 0 10px 26px rgb(0 0 0 / .46), inset 0 1px hsl(0 0% 100% / .05); transition: transform .16s, border-color .16s, background .16s, color .16s; }
 .nav-button:first-child { margin-right: -15px; }
 .nav-button:last-child { margin-left: -15px; }
-.nav-button:hover { transform: scale(1.06); border-color: hsl(var(--brand-border)); background: hsl(var(--surface-hover) / .94); }
-.nav-button:disabled { opacity: .35; cursor: default; transform: none; }
+.nav-button svg { display: block; transform: translateY(-.5px); }
+.nav-button:hover { transform: scale(1.06); border-color: hsl(var(--brand-border)); background: hsl(var(--surface-hover) / .94); color: hsl(var(--foreground)); }
+.nav-button:disabled { opacity: .55; cursor: default; transform: none; }
 .identity-card { position: relative; border: 1px solid hsl(var(--border) / .85); border-radius: 15px; background: hsl(var(--card) / .93); box-shadow: 0 22px 70px rgb(0 0 0 / .52), inset 0 1px hsl(0 0% 100% / .04); pointer-events: auto; overflow: hidden; }
 .identity-card::before { content: ""; position: absolute; top: 17px; bottom: 17px; left: 0; width: 3px; border-radius: 99px; background: hsl(var(--primary)); box-shadow: 0 0 18px hsl(var(--primary) / .6); }
 .character-card { width: min(660px, calc(100vw - 130px)); min-height: 116px; display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; align-items: center; gap: 15px; padding: 17px 20px 17px 24px; }
@@ -77,6 +78,8 @@ kbd { border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
 label { display: flex; flex-direction: column; gap: 5px; margin-bottom: 10px; color: hsl(var(--muted-foreground)); font-size: 9px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
 input, select, textarea { width: 100%; border: 1px solid hsl(var(--control-border)); border-radius: 7px; background: hsl(var(--background) / .9); color: hsl(var(--foreground)); padding: 8px 9px; font-size: 12px; text-transform: none; letter-spacing: normal; }
+input[type="date"]::-webkit-calendar-picker-indicator { cursor: pointer; filter: invert(1) brightness(1.8); opacity: .82; }
+input[type="date"]::-webkit-calendar-picker-indicator:hover { opacity: 1; }
 textarea { resize: vertical; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 3px; border: 1px solid hsl(var(--border)); border-radius: 9px; padding: 4px; background: hsl(var(--background) / .8); }
 .segmented button { height: 34px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; font-size: 11px; font-weight: 700; }.segmented button.active { border-color: hsl(var(--brand-border)); background: hsl(var(--brand-soft)); color: hsl(var(--foreground)); }
