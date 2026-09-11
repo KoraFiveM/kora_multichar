@@ -94,12 +94,9 @@ local function previewCharacter(citizenid)
     send('multichar:previewLoading', { citizenid = citizenid })
 
     CreateThread(function()
-        local model, skin
-        local ok = pcall(function()
-            model, skin = QB.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
-        end)
+        local model, skin = QB.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
         if generation ~= previewGeneration then return end
-        if not ok or type(model) ~= 'string' then model, skin = fallbackModel(character), {} end
+        if type(model) ~= 'string' then model, skin = fallbackModel(character), {} end
         -- A catalog that arrived empty (a boot fetch that never answered) makes
         -- all three attempts below fail identically with 'no matching scene'.
         -- One late refetch recovers a client whose network settled after boot.
@@ -127,8 +124,7 @@ local function previewCharacter(citizenid)
 end
 
 local function leaveServerMode()
-    local ok, result = pcall(function() return QB.callback.trigger('qbmultichar:server:leaveMode') end)
-    return ok and result == true
+    return QB.callback.trigger('qbmultichar:server:leaveMode') == true
 end
 
 local function closeNuiOnly()

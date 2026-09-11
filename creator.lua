@@ -155,7 +155,7 @@ local function closeCreator()
     cameraWorkerGeneration = cameraWorkerGeneration + 1
     destroyEditorCamera()
     SceneRuntime.endMode()
-    pcall(function() QB.callback.trigger('qbmultichar:server:leaveMode') end)
+    QB.callback.trigger('qbmultichar:server:leaveMode')
     SetNuiFocus(false, false)
     send('multichar:creator:close')
     creator.draft, creator.catalog = nil, {}
