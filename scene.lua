@@ -30,19 +30,18 @@ end
 local function loadModel(model)
     local hash = type(model) == 'number' and model or joaat(model)
     if not IsModelValid(hash) then return nil end
-    RequestModel(hash)
-    local deadline = GetGameTimer() + Config.sceneLimits.streamTimeoutMs
-    while not HasModelLoaded(hash) and GetGameTimer() < deadline do Wait(0) end
-    if not HasModelLoaded(hash) then return nil end
-    return hash
+    local loaded = QB.stream.loadModel(hash, nil, {
+        timeout = Config.sceneLimits.streamTimeoutMs,
+    })
+    return loaded or nil
 end
 
 local function loadAnim(dict)
     if type(dict) ~= 'string' or dict == '' then return false end
-    RequestAnimDict(dict)
-    local deadline = GetGameTimer() + Config.sceneLimits.streamTimeoutMs
-    while not HasAnimDictLoaded(dict) and GetGameTimer() < deadline do Wait(0) end
-    return HasAnimDictLoaded(dict)
+    local ok, loaded = pcall(QB.stream.loadAnimDict, dict, nil, {
+        timeout = Config.sceneLimits.streamTimeoutMs,
+    })
+    return ok and loaded ~= false
 end
 
 local function localWorld(scene, offset)
