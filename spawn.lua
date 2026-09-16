@@ -80,7 +80,7 @@ local function openSpawnSelection(isNew)
         send('multichar:error', err or 'Could not open spawn selection.')
         return
     end
-    MulticharSetClientMode('spawn', true)
+    multicharSetClientMode('spawn', true)
     SetNuiFocus(true, true)
     -- The NUI races a timeout against every focus callback. It derives that
     -- timeout from this figure instead of carrying its own copy of the flight
@@ -113,7 +113,7 @@ RegisterNUICallback('multichar:spawn:choose', function(data, cb)
     -- House spawning becomes reachable automatically when qb-houses returns
     -- coordinates. This merged resource has no house-interior handoff, so the
     -- safe compatible behavior is to land at those authoritative coordinates.
-    MulticharFinishSpawn(location.coords)
+    multicharFinishSpawn(location.coords)
     cb({ ok = true })
 end)
 

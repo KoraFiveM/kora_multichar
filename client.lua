@@ -183,11 +183,11 @@ end
 
 -- Shared with spawn.lua; one finalization path prevents cleanup differences
 -- between fixed, last-location, and future house spawns.
-function MulticharFinishSpawn(coords)
+function multicharFinishSpawn(coords)
     finishAt(coords)
 end
 
-function MulticharSetClientMode(mode)
+function multicharSetClientMode(mode)
     currentMode = mode
 end
 
