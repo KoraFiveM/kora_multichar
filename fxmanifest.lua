@@ -39,6 +39,7 @@ shared_scripts {
     'config.lua',
     'shared/scene.lua',
     'scenes.lua',
+    'shared/config_registration.lua',
 }
 
 server_script 'server.lua'

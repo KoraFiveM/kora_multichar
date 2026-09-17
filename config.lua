@@ -128,6 +128,3 @@ Config.spawns = {
 -- top of that list moves both. Its `coords` are shared by reference, which is
 -- safe -- nothing here mutates a spawn's coordinates.
 Config.defaultSpawn = Config.spawns[1].coords
-
--- Registers this resource-owned configuration with qblib without changing its public Config table.
-if QB and QB.config and QB.config.adopt then Config = QB.config.adopt(Config) end
