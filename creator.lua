@@ -220,7 +220,12 @@ end)
 RegisterCommand('qbmultichar_creator_toggle', function()
     if creator.active then setCursor(not creator.cursor) end
 end, false)
-RegisterKeyMapping('qbmultichar_creator_toggle', 'Scene Studio: Toggle Cursor / Freecam', 'keyboard', 'TAB')
+QB.keybind.add({
+    name = 'qbmultichar_creator_toggle',
+    description = 'Scene Studio: Toggle Cursor / Freecam',
+    defaultKey = 'TAB',
+    onPressed = function() if creator.active then setCursor(not creator.cursor) end end,
+})
 
 RegisterNUICallback('multichar:creator:action', function(data, cb)
     if not creator.active or type(data) ~= 'table' then cb({ ok = false }); return end
