@@ -128,7 +128,6 @@ textarea { resize: vertical; }
 .cue-editor > .json-editor { border: 0; padding: 2px 3px; background: transparent; }.cue-editor > .json-editor[open] { position: fixed; z-index: 40; left: 50%; bottom: 190px; width: 360px; transform: translateX(-50%); border: 1px solid hsl(var(--brand-border)); border-radius: 8px; padding: 9px; background: hsl(var(--popover)); box-shadow: 0 18px 50px rgb(0 0 0 / .58); }
 .cue-add { position: absolute; left: 11px; right: 11px; bottom: -38px; display: flex; gap: 5px; }.cue-add input { height: 30px; padding: 5px 7px; font-family: ui-monospace, monospace; font-size: 9px; }.cue-add .mini-button { flex: none; }
 .creator-actions { position: absolute; z-index: 3; right: 14px; bottom: 14px; display: flex; gap: 7px; padding: 8px; }.export-toast { position: absolute; right: 0; bottom: 54px; border: 1px solid hsl(var(--brand-border)); border-radius: 7px; padding: 7px 10px; background: hsl(var(--popover)); color: hsl(var(--foreground)); font-size: 10px; }
-.freecam-hud { position: absolute; z-index: 5; top: 94px; left: 50%; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); border: 1px solid hsl(var(--brand-border)); border-radius: 9px; padding: 8px 11px; background: hsl(var(--card) / .86); color: hsl(var(--foreground)); font-size: 10px; }.freecam-hud svg { color: hsl(var(--primary)); }.freecam-hud span { color: hsl(var(--muted-foreground)); }
 
 @keyframes reveal { from { opacity: 0; } }
 @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }

@@ -6,18 +6,31 @@ local creator = {
     cursor = true,
     draft = nil,
     catalog = {},
+    freecam = nil,
     cam = nil,
     camCoords = nil,
     camRot = nil,
+    instructions = nil,
 }
-local cameraWorkerGeneration = 0
+local creatorToggleBinding
+local updateUi
 
 local function send(action, data)
     SendNUIMessage({ action = action, data = data })
 end
 
 local function destroyEditorCamera()
-    if creator.cam and DoesCamExist(creator.cam) then DestroyCam(creator.cam, false) end
+    if creator.freecam then
+        creator.camCoords = creator.freecam.getCoords() or creator.camCoords
+        local rotation = creator.freecam.getRotation()
+        if rotation then creator.camRot = vector3(rotation.pitch, rotation.roll, rotation.yaw) end
+        creator.freecam.stop()
+        creator.freecam = nil
+    end
+    if creator.instructions then
+        creator.instructions.hide()
+        creator.instructions = nil
+    end
     creator.cam = nil
 end
 
@@ -25,40 +38,6 @@ local function forwardVector(rotation)
     local pitch, yaw = math.rad(rotation.x), math.rad(rotation.z)
     local cosPitch = math.abs(math.cos(pitch))
     return vector3(-math.sin(yaw) * cosPitch, math.cos(yaw) * cosPitch, math.sin(pitch))
-end
-
-local function startCameraWorker()
-    cameraWorkerGeneration = cameraWorkerGeneration + 1
-    local generation = cameraWorkerGeneration
-
-    CreateThread(function()
-        while creator.active and generation == cameraWorkerGeneration do
-            if creator.cursor or not creator.cam then
-                Wait(100)
-            else
-                local dt = GetFrameTime()
-                local lookX = GetDisabledControlNormal(0, 1)
-                local lookY = GetDisabledControlNormal(0, 2)
-                creator.camRot = vector3(
-                    math.max(-89.0, math.min(89.0, creator.camRot.x - lookY * Config.creator.lookSensitivity)),
-                    0.0,
-                    creator.camRot.z - lookX * Config.creator.lookSensitivity
-                )
-                local forward = forwardVector(creator.camRot)
-                local right = vector3(math.cos(math.rad(creator.camRot.z)), math.sin(math.rad(creator.camRot.z)), 0.0)
-                local speed = Config.creator.moveSpeed * (IsDisabledControlPressed(0, 21) and Config.creator.fastMultiplier or 1.0) * dt
-                if IsDisabledControlPressed(0, 32) then creator.camCoords = creator.camCoords + forward * speed end
-                if IsDisabledControlPressed(0, 33) then creator.camCoords = creator.camCoords - forward * speed end
-                if IsDisabledControlPressed(0, 34) then creator.camCoords = creator.camCoords - right * speed end
-                if IsDisabledControlPressed(0, 35) then creator.camCoords = creator.camCoords + right * speed end
-                if IsDisabledControlPressed(0, 44) then creator.camCoords = creator.camCoords + vector3(0.0, 0.0, speed) end
-                if IsDisabledControlPressed(0, 38) then creator.camCoords = creator.camCoords - vector3(0.0, 0.0, speed) end
-                SetCamCoord(creator.cam, creator.camCoords.x, creator.camCoords.y, creator.camCoords.z)
-                SetCamRot(creator.cam, creator.camRot.x, 0.0, creator.camRot.z, 2)
-                Wait(0)
-            end
-        end
-    end)
 end
 
 local function startEditorCamera()
@@ -69,23 +48,55 @@ local function startEditorCamera()
     RequestCollisionAtCoord(anchor.x, anchor.y, anchor.z)
     creator.camCoords = creator.camCoords or vector3(anchor.x + 6.0, anchor.y - 8.0, anchor.z + 3.0)
     creator.camRot = creator.camRot or vector3(-12.0, 0.0, anchor.w or 0.0)
-    creator.cam = CreateCam('DEFAULT_SCRIPTED_CAMERA', true)
-    SetCamCoord(creator.cam, creator.camCoords.x, creator.camCoords.y, creator.camCoords.z)
-    SetCamRot(creator.cam, creator.camRot.x, creator.camRot.y, creator.camRot.z, 2)
-    SetCamFov(creator.cam, 45.0)
-    RenderScriptCams(true, true, 250, true, true)
+    local freecam, err = QB.freecam.start({
+        coords = creator.camCoords,
+        rotation = creator.camRot,
+        fov = 45.0,
+        moveSpeed = Config.creator.moveSpeed,
+        lookSensitivity = Config.creator.lookSensitivity,
+        fastMultiplier = Config.creator.fastMultiplier,
+        transitionMs = 250,
+        upControl = 44,
+        downControl = 38,
+        freezePlayer = false,
+    })
+    if not freecam then return false, err end
+    creator.freecam, creator.cam = freecam, freecam.getCamera()
+    creator.instructions = QB.instructional.show({
+        { control = 32, label = 'Move forward' },
+        { control = 33, label = 'Move backward' },
+        { control = 34, label = 'Move left' },
+        { control = 35, label = 'Move right' },
+        { control = 44, label = 'Move up' },
+        { control = 38, label = 'Move down' },
+        { control = 21, label = 'Move faster' },
+        { keybind = creatorToggleBinding, label = 'Show cursor' },
+    })
+    return true
 end
 
 local function setCursor(enabled)
     if not creator.active then return end
     creator.cursor = enabled
+    if not enabled then
+        local started, err = startEditorCamera()
+        if not started then
+            creator.cursor = true
+            updateUi(err)
+            return
+        end
+    else
+        destroyEditorCamera()
+    end
     SetNuiFocus(enabled, enabled)
-    if not enabled then startEditorCamera() end
     send('multichar:creator:cursor', { cursor = enabled })
 end
 
 local function placementPoint()
     if creator.cam then
+        creator.camCoords = creator.freecam.getCoords() or creator.camCoords
+        local rotation = creator.freecam.getRotation()
+        if rotation then creator.camRot = vector3(rotation.pitch, rotation.roll, rotation.yaw) end
         local ok, hit, coords = pcall(function() return QB.raycast.fromCam(creator.cam, 75.0) end)
         if ok and hit and coords then return { x = coords.x, y = coords.y, z = coords.z, w = creator.camRot.z } end
         local forward = forwardVector(creator.camRot)
@@ -100,7 +111,7 @@ local function placementPoint()
     return { x = coords.x, y = coords.y, z = coords.z, w = GetEntityHeading(PlayerPedId()) }
 end
 
-local function updateUi(errorMessage)
+updateUi = function(errorMessage)
     send('multichar:creator:state', {
         draft = creator.draft,
         scenes = creator.catalog,
@@ -152,7 +163,6 @@ end
 local function closeCreator()
     if not creator.active then return end
     creator.active = false
-    cameraWorkerGeneration = cameraWorkerGeneration + 1
     destroyEditorCamera()
     SceneRuntime.endMode()
     QB.callback.trigger('qbmultichar:server:leaveMode')
@@ -212,7 +222,6 @@ RegisterNetEvent('qbmultichar:client:openCreator', function(catalog)
     creator.active, creator.catalog, creator.draft = true, catalog or {}, newDraft()
     creator.cursor, creator.camCoords, creator.camRot = true, nil, nil
     SceneRuntime.beginMode()
-    startCameraWorker()
     SetNuiFocus(true, true)
     send('multichar:creator:show', { draft = creator.draft, scenes = creator.catalog, cursor = true })
 end)
@@ -220,7 +229,7 @@ end)
 RegisterCommand('qbmultichar_creator_toggle', function()
     if creator.active then setCursor(not creator.cursor) end
 end, false)
-QB.keybind.add({
+creatorToggleBinding = QB.keybind.add({
     name = 'qbmultichar_creator_toggle',
     description = 'Scene Studio: Toggle Cursor / Freecam',
     defaultKey = 'TAB',
@@ -290,7 +299,10 @@ RegisterNUICallback('multichar:creator:action', function(data, cb)
         for index, entity in ipairs(creator.draft.entities) do if entity.id == payload.id then table.remove(creator.draft.entities, index); break end end
         refreshPreview()
     elseif action == 'captureCamera' then
-        if not creator.cam then startEditorCamera() end
+        if not creator.cam then
+            local started, err = startEditorCamera()
+            if not started then updateUi(err); cb({ ok = false }); return end
+        end
         local lookWorld = placementPoint()
         creator.draft.cameras[#creator.draft.cameras + 1] = {
             id = payload.id or ('camera_%d'):format(#creator.draft.cameras + 1),

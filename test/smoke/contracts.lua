@@ -115,8 +115,8 @@ H.test('scene studio exports through clipboard without writing server files', fu
     H.truthy(creator:find('definition.id = nil', 1, true), 'only the registry-level id should be omitted')
     H.truthy(creator:find("id = 'close'", 1, true) and creator:find("id = 'focal'", 1, true) and creator:find("id = 'establishing'", 1, true), 'new studio scenes should use the complete camera arc')
     H.falsy(creator:find('io.open', 1, true), 'studio must not write files')
-    H.truthy(creator:find('local function startCameraWorker()', 1, true), 'the studio should create its camera worker on demand')
-    H.truthy(creator:find('while creator.active and generation == cameraWorkerGeneration do', 1, true), 'the camera worker must terminate when the studio closes')
+    H.truthy(creator:find('QB.freecam.start({', 1, true), 'the studio should use qblib freecam')
+    H.truthy(creator:find('QB.instructional.show({', 1, true), 'the studio should use qblib instructional buttons')
 end)
 
 H.report('contracts')

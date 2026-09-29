@@ -1,7 +1,7 @@
 import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
   Box, Briefcase, CalendarDays, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clapperboard, Copy,
-  Crosshair, Fingerprint, Flag, Info, LoaderCircle, LogOut, MapPin, MousePointer2, Move3d,
+  Crosshair, Fingerprint, Flag, Info, LoaderCircle, LogOut, MapPin, MousePointer2,
   Plane, Play, Plus, Save, Sparkles, Trash2, UserPlus, Users, Wallet, X,
 } from "lucide-react";
 import { fetchNui } from "./nui";
@@ -412,7 +412,6 @@ function CreatorScreen({ draft, scenes, cursor, exported }: { draft: SceneDraft;
       <button className={`button ${cursor ? "primary" : "ghost"}`} onClick={() => creatorAction("toggleMode")}><MousePointer2 size={15} />{cursor ? "Cursor" : "Freecam"}</button>
       <button className="icon-button" onClick={() => creatorAction("close")}><X /></button>
     </header>
-    {!cursor && <div className="freecam-hud"><Move3d /><strong>Freecam active</strong><span>WASD move · Q/E vertical · Shift boost · mouse look · Tab cursor</span></div>}
     <aside className="creator-left panel">
       <CreatorSection title="Scene" icon={<Clapperboard size={15} />}>
         <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { creatorAction("metadata", { id: form.get("id"), label: form.get("label"), priority: Number(form.get("priority")), selectors: JSON.parse(selectorText) }); } catch { /* Lua returns useful validation on preview */ } }}>

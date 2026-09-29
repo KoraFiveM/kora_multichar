@@ -318,7 +318,9 @@ metadata, selectors, environment, character placement, local entities,
 cameras, and timeline cues.
 
 - Press **Tab** to switch between the themed inspector and freecam.
-- Freecam uses mouse look, WASD, Q/E vertical movement, and Shift boost.
+- Freecam uses qblib's shared camera lifecycle with mouse look, WASD, Q/E
+  vertical movement, and Shift boost. Native instructional buttons show the
+  live bindings while freecam is active.
 - Placement and camera capture use crosshair raycasts and store relative
   coordinates.
 - Timeline controls support cue editing, scrubbing, looping, and live preview.
