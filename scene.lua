@@ -603,7 +603,7 @@ local function startTimeline(scene)
             local started, index = GetGameTimer(), 1
             while generation == state.timelineGeneration and GetGameTimer() - started <= timeline.durationMs do
                 local elapsed = GetGameTimer() - started
-                while cues[index] and (cues[index].at or 0) <= elapsed do
+                while generation == state.timelineGeneration and cues[index] and (cues[index].at or 0) <= elapsed do
                     playCue(cues[index]); index = index + 1
                 end
                 Wait(0)

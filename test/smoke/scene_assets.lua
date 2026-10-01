@@ -291,5 +291,33 @@ H.test('foreign stop leaves owned assets and own stop disposes them', function()
     eq(count('remove-anim', 'stop_dict'), 1, 'own resource stop releases acquired dictionary')
 end)
 
+for _, replace in ipairs({ false, true }) do
+    H.test(replace and 'retired timeline cannot reach replacement character' or 'retired timeline cannot request after cleanup', function()
+        fresh(); world.heldAnim.retired_timeline = true
+        local scene = definition()
+        scene.timeline = { durationMs = 50, cues = {
+            { type = 'animation', at = 0, target = 'character', dict = 'retired_timeline', name = 'fixture_anim' },
+            { type = 'particle', at = 0, target = 'character', asset = 'after_retirement', effect = 'fixture_fx' },
+        } }
+        eq(SceneRuntime.loadCharacter(scene, 'fixture_model', {}), true, 'actual timeline scene loads')
+        local timeline = assert(world.threads[1])
+        eq(step(timeline), 'suspended', 'first due cue waits in actual streaming helper')
+        local previousPed = world.nextEntity
+        if replace then show() else SceneRuntime.cleanupScene() end
+        eq(world.entities[previousPed], nil, 'former timeline character is disposed')
+        if replace then eq(world.entities[world.nextEntity], true, 'replacement preview character is live') end
+        local targets, nativeStart = {}, StartParticleFxLoopedOnEntity
+        StartParticleFxLoopedOnEntity = function(effect, target, ...)
+            targets[#targets + 1] = target
+            return nativeStart(effect, target, ...)
+        end
+        world.anim.retired_timeline = true; finish(timeline)
+        eq(count('play-anim', 'retired_timeline'), 0, 'retired animation does not run')
+        eq(count('request-ptfx', 'after_retirement'), 0, 'retired due-cue loop requests no further asset')
+        eq(count('start-fx'), 0, 'retired due-cue loop starts no FX on replacement')
+        eq(#targets, 0, 'no native FX argument can name the new preview character')
+    end)
+end
+
 print(('  %d controlled source/API assertions'):format(checks))
 H.report('scene assets')
