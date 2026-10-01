@@ -24,9 +24,15 @@ end
 _G.TriggerClientEvent = function(name, target, ...) clientEvents[#clientEvents + 1] = { name = name, target = target, args = { ... } } end
 _G.AddEventHandler = function(name, callback) handlers[name] = handlers[name] or {}; handlers[name][#handlers[name] + 1] = callback end
 
+local bucketNotices = {}
+_G.TriggerEvent = function(name, src)
+    if name == 'qbvoice:server:bucketChanged' then
+        bucketNotices[#bucketNotices + 1] = { src = src, bucket = buckets[src] }
+    end
+end
 local loggedOut = {}
 local exportTable = {
-    ['qb-core'] = { SetPlayerBucket = function(_, src, bucket) buckets[src] = bucket; return true end },
+    ['qb-core'] = { SetPlayerBucket = function(_, src, bucket) buckets[src] = bucket; TriggerEvent('qbvoice:server:bucketChanged', src); return true end },
     qbcore = {
         -- Mirrors Core.player.logout: clears the replicated login state (which
         -- is the ONLY thing the client follows back to selection) and reports
@@ -178,6 +184,25 @@ H.test('logout refuses without a character and during a cinematic session', func
     callbacks['qbmultichar:server:leaveMode'](7)
     H.truthy(runCommand(Config.logout.command, 7))
     H.equal(loggedOut[1], 7, 'logout works again once the session is cleaned up')
+end)
+
+H.test('bucket notification covers the core and disabled-compat fallback exactly once', function()
+    local compatSetter = exportTable['qb-core'].SetPlayerBucket
+    for _, available in ipairs({ true, false }) do
+        exportTable['qb-core'].SetPlayerBucket = available and compatSetter or function() error('compat disabled') end
+        states[7]['qbcore:loggedIn'] = false
+        bucketNotices = {}
+        H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+        H.equal(#bucketNotices, 1)
+        H.equal(bucketNotices[1].src, 7)
+        H.equal(bucketNotices[1].bucket, Config.buckets.selectionBase + 7, 'native changes before notification')
+        bucketNotices = {}
+        H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
+        H.equal(#bucketNotices, 1)
+        H.equal(bucketNotices[1].src, 7)
+        H.equal(bucketNotices[1].bucket, 42, 'restore notifies after native')
+    end
+    exportTable['qb-core'].SetPlayerBucket = compatSetter
 end)
 
 H.report('server')
