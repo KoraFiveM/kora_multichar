@@ -41,7 +41,9 @@ local function host(withClient)
     e.PlayerId=function() return 1 end
     e.IsEntityPositionFrozen=function() return false end
     e.CreateCam=function()
-        q.created=q.created+1; q.cameras[q.created]={alive=true}; return q.created
+        q.created=q.created+1
+        if q.failCreateAt==q.created then return 0 end
+        q.cameras[q.created]={alive=true}; return q.created
     end
     e.DoesCamExist=function(id) return q.cameras[id] and q.cameras[id].alive==true or false end
     e.DestroyCam=function(id) if q.cameras[id] then q.cameras[id].alive=false end end
@@ -50,7 +52,11 @@ local function host(withClient)
     e.GetFinalRenderedCamCoord=function() return q.active and q.cameras[q.active].coords or vector(0,0,0) end
     e.GetCamFov=function() return 45 end
     e.SetCamActive=function(id) q.active=id end
-    e.SetCamActiveWithInterp=function(id) q.active=id end
+    e.SetCamActiveWithInterp=function(id,from)
+        equal(e.DoesCamExist(id),true,'interpolation target exists')
+        equal(e.DoesCamExist(from),true,'interpolation source survives replacement')
+        q.active=id
+    end
     e.RenderScriptCams=function(active) q.rendered=active end
     e.StartShapeTestCapsule=function()
         local id=#q.traces+1; q.traces[id]={pause=q.pauseTrace}; q.pauseTrace=false; return id
@@ -236,5 +242,30 @@ for _,fallback in ipairs({'scene','model','failure'}) do
         local last=q.messages[#q.messages]
         equal(last.data.ok,fallback~='failure'); equal(last.data.scene,'default')
     end)
+end
+-- Replacing an interpolating flight must release every superseded handle.
+for _,phase in ipairs({'lift','travel','descent'}) do
+    for _,failure in ipairs({0,2,3,4}) do
+        H.test(phase .. ' flight replacement cleans cameras with creation failure ' .. failure, function()
+            local e,q=host()
+            equal(e.SceneRuntime.previewSpawn({coords=vector(0,0,0)}),true)
+            local cfg=e.Config.spawnFlight
+            if phase=='lift' then cfg.liftDurationMs=10
+            elseif phase=='travel' then cfg.minTravelDurationMs=10; cfg.maxTravelDurationMs=10
+            else cfg.descentDurationMs=10 end
+            local old=coroutine.create(function() return e.SceneRuntime.previewSpawn({coords=vector(50,0,0)}) end)
+            run(old); equal(coroutine.status(old),'suspended','old interpolation waits')
+            cfg.liftDurationMs=0; cfg.minTravelDurationMs=0; cfg.maxTravelDurationMs=0; cfg.descentDurationMs=0
+            if failure>0 then q.failCreateAt=q.created+failure end
+            equal(e.SceneRuntime.previewSpawn({coords=vector(100,0,0)}),true,'replacement or recovery completes')
+            local created,active=q.created,q.active
+            equal(run(old),false,'older flight retires')
+            equal(q.created,created,'older flight creates no new handle')
+            equal(q.active,active,'older flight leaves replacement camera active')
+            e.SceneRuntime.endMode()
+            local alive=0; for _,cam in pairs(q.cameras) do if cam.alive then alive=alive+1 end end
+            equal(alive,0,'every owned camera is cleaned')
+        end)
+    end
 end
 H.report('preview_lifecycle')

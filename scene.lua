@@ -938,12 +938,14 @@ function SceneRuntime.previewSpawn(location)
 
     local liftCam = createPointCamera(liftPosition, oldLookAt, math.max(50.0, GetCamFov(currentCam)))
     if not liftCam then return recoverStaticPreview() end
+    destroyCameraKey('spawnLift')
     state.cameras.spawnLift, state.activeCam = liftCam, liftCam
     SetCamActiveWithInterp(liftCam, currentCam, tonumber(settings.liftDurationMs) or 900, true, true)
     if not waitCameraTransition(settings.liftDurationMs or 900, generation) then return false, false, PREVIEW_SUPERSEDED end
 
     local travelCam = createPointCamera(travelPosition, targetLookAt, 58.0)
     if not travelCam then return recoverStaticPreview() end
+    destroyCameraKey('spawnTravel')
     state.cameras.spawnTravel, state.activeCam = travelCam, travelCam
     SetCamActiveWithInterp(travelCam, liftCam, travelDuration, true, true)
     if not waitCameraTransition(travelDuration, generation) then return false, false, PREVIEW_SUPERSEDED end
@@ -956,6 +958,7 @@ function SceneRuntime.previewSpawn(location)
     applyEnvironment(preview.environment)
     local finalCam = createPointCamera(targetCamera, targetLookAt, preview.fov or 45.0)
     if not finalCam then return recoverStaticPreview() end
+    destroyCameraKey('spawnNext')
     state.cameras.spawnNext, state.activeCam = finalCam, finalCam
     SetCamActiveWithInterp(finalCam, travelCam, tonumber(settings.descentDurationMs) or 1450, true, true)
     if not waitCameraTransition(settings.descentDurationMs or 1450, generation) then return false, false, PREVIEW_SUPERSEDED end
