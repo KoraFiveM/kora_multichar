@@ -4,6 +4,8 @@
 
 SceneRuntime = SceneRuntime or {}
 
+local pendingAssets = {}
+
 local state = {
     modeActive = false,
     sceneGeneration = 0,
@@ -13,6 +15,8 @@ local state = {
     cameras = {},
     cameraDefinitions = {},
     particles = {},
+    animAssets = {},
+    ptfxAssets = {},
     sounds = {},
     previewPed = nil,
     hiddenPed = nil,
@@ -36,12 +40,43 @@ local function loadModel(model)
     return loaded or nil
 end
 
+-- Pending loads keep their captured scene map until the bounded library call
+-- completes; cancelling the shared-name loader could release a newer scene's use.
+local function loadSceneAsset(group, name, loader, hasLoaded, release)
+    local assets = state[group]
+    local asset = assets[name]
+    if not asset then
+        asset = { pending = 0, owned = false, name = name, release = release }
+        assets[name] = asset
+    end
+    local requested = not hasLoaded(name)
+    if requested then asset.requested = true end
+    asset.pending = asset.pending + 1
+    pendingAssets[asset] = true
+    local ok, loaded = pcall(loader, name, nil, { timeout = Config.sceneLimits.streamTimeoutMs })
+    asset.pending = asset.pending - 1
+    if asset.pending == 0 then pendingAssets[asset] = nil end
+    if ok and loaded ~= false and requested and not asset.released then asset.owned = true end
+    if assets ~= state[group] and asset.pending == 0 and asset.owned then
+        asset.owned = false
+        local current = state[group][name]
+        if current then current.owned = true else release(name) end
+    end
+    return ok and loaded ~= false and assets == state[group]
+end
+
+local function releaseSceneAssets(assets, release)
+    for name, asset in pairs(assets) do
+        if asset.pending == 0 and asset.owned then
+            release(name)
+            asset.owned = false
+        end
+    end
+end
+
 local function loadAnim(dict)
     if type(dict) ~= 'string' or dict == '' then return false end
-    local ok, loaded = pcall(QB.stream.loadAnimDict, dict, nil, {
-        timeout = Config.sceneLimits.streamTimeoutMs,
-    })
-    return ok and loaded ~= false
+    return loadSceneAsset('animAssets', dict, QB.stream.loadAnimDict, HasAnimDictLoaded, RemoveAnimDict)
 end
 
 local function localWorld(scene, offset)
@@ -313,6 +348,9 @@ local function cleanupScene()
         if entityExists(entity) then DeleteEntity(entity) end
     end
     if entityExists(state.previewPed) then DeleteEntity(state.previewPed) end
+    releaseSceneAssets(state.animAssets, RemoveAnimDict)
+    releaseSceneAssets(state.ptfxAssets, RemoveNamedPtfxAsset)
+    state.animAssets, state.ptfxAssets = {}, {}
     state.entities, state.definitions, state.cameras, state.cameraDefinitions = {}, {}, {}, {}
     state.particles, state.sounds = {}, {}
     state.previewPed, state.activeCam, state.scene = nil, nil, nil
@@ -470,11 +508,10 @@ end
 
 local function playParticle(cue)
     if type(cue.asset) ~= 'string' or type(cue.effect) ~= 'string' then return end
-    RequestNamedPtfxAsset(cue.asset)
     local generation = state.timelineGeneration
-    local deadline = GetGameTimer() + Config.sceneLimits.streamTimeoutMs
-    while not HasNamedPtfxAssetLoaded(cue.asset) and GetGameTimer() < deadline do Wait(0) end
-    if generation ~= state.timelineGeneration or not HasNamedPtfxAssetLoaded(cue.asset) then return end
+    if not loadSceneAsset('ptfxAssets', cue.asset, QB.stream.loadPtfx,
+        HasNamedPtfxAssetLoaded, RemoveNamedPtfxAsset) then return end
+    if generation ~= state.timelineGeneration then return end
     UseParticleFxAssetNextCall(cue.asset)
     local target = cue.target == 'character' and state.previewPed or state.entities[cue.target]
     if cue.target and not entityExists(target) then return end
@@ -972,5 +1009,14 @@ function SceneRuntime.playCue(cue)
 end
 
 AddEventHandler('onClientResourceStop', function(resource)
-    if resource == GetCurrentResourceName() then SceneRuntime.endMode() end
+    if resource ~= GetCurrentResourceName() then return end
+    SceneRuntime.endMode()
+    -- A stopped caller cannot finish its suspended load and dispose the request.
+    for asset in pairs(pendingAssets) do
+        if asset.requested and not asset.released then
+            asset.release(asset.name)
+            asset.owned, asset.released = false, true
+        end
+    end
+    pendingAssets = {}
 end)
