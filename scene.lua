@@ -431,7 +431,7 @@ local function resolveCameraPosition(position, subject, ignoreEntity, secondaryS
     return position
 end
 
-local function createCamera(scene, definition)
+local function createCamera(scene, definition, generation)
     local position, lookAt = localWorld(scene, definition.offset), localWorld(scene, definition.lookAt)
     local characterOffset = scene.character.offset
     local characterLookAt = localWorld(scene, {
@@ -440,6 +440,7 @@ local function createCamera(scene, definition)
         z = characterOffset.z + 1.15,
     })
     position = resolveCameraPosition(position, lookAt, state.previewPed, characterLookAt)
+    if generation ~= state.sceneGeneration then return nil, true end
     local camera = CreateCam('DEFAULT_SCRIPTED_CAMERA', false)
     if not camera or camera == 0 or not DoesCamExist(camera) then return nil end
     SetCamCoord(camera, position.x, position.y, position.z)
@@ -688,7 +689,8 @@ function SceneRuntime.loadCharacter(scene, model, skin)
     end
     seatScenePeds(scene)
     for _, definition in ipairs(scene.cameras or {}) do
-        local camera = createCamera(scene, definition)
+        local camera, stale = createCamera(scene, definition, generation)
+        if stale then return false, 'stale preview' end
         if camera then state.cameras[definition.id], state.cameraDefinitions[definition.id] = camera, definition end
     end
     local first
@@ -792,6 +794,7 @@ local function staticSpawnPreview(location, generation)
         lookAt,
         PlayerPedId()
     )
+    if generation ~= state.sceneGeneration then return false, false, PREVIEW_SUPERSEDED end
     applyEnvironment(preview.environment)
 
     local cam = createPointCamera(cameraCoords, lookAt, preview.fov or 45.0)
@@ -912,6 +915,7 @@ function SceneRuntime.previewSpawn(location)
     if generation ~= state.sceneGeneration then return false, false, PREVIEW_SUPERSEDED end
 
     targetCamera = resolveCameraPosition(targetCamera, targetLookAt, PlayerPedId())
+    if generation ~= state.sceneGeneration then return false, false, PREVIEW_SUPERSEDED end
     applyEnvironment(preview.environment)
     local finalCam = createPointCamera(targetCamera, targetLookAt, preview.fov or 45.0)
     if not finalCam then return recoverStaticPreview() end

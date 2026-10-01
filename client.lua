@@ -104,16 +104,18 @@ local function previewCharacter(citizenid)
         if generation ~= previewGeneration then return end
         local scene, sceneId = SceneSchema.resolve(sceneCatalog, character, Config.defaultScene)
         local loaded, err = SceneRuntime.loadCharacter(scene, model, skin)
+        if generation ~= previewGeneration or err == 'stale preview' then return end
         if not loaded and sceneId ~= Config.defaultScene then
             sceneId, scene = Config.defaultScene, sceneCatalog[Config.defaultScene]
             loaded, err = SceneRuntime.loadCharacter(scene, model, skin)
+            if generation ~= previewGeneration or err == 'stale preview' then return end
         end
         if not loaded then
             model, skin = fallbackModel(character), {}
             sceneId, scene = Config.defaultScene, sceneCatalog[Config.defaultScene]
             loaded, err = SceneRuntime.loadCharacter(scene, model, skin)
         end
-        if generation ~= previewGeneration then return end
+        if generation ~= previewGeneration or err == 'stale preview' then return end
         send('multichar:previewReady', {
             citizenid = citizenid,
             scene = sceneId,
@@ -158,6 +160,7 @@ local function announceSpawnComplete(isNew)
 end
 
 local function finishAt(coords)
+    previewGeneration = previewGeneration + 1
     local isNew = pendingNewCharacter
     pendingNewCharacter = false
 
@@ -188,10 +191,12 @@ function multicharFinishSpawn(coords)
 end
 
 function multicharSetClientMode(mode)
+    previewGeneration = previewGeneration + 1
     currentMode = mode
 end
 
 local function refreshCharacters()
+    previewGeneration = previewGeneration + 1
     local entered, enterErr
     for tries = 1, BOOT_MAX_ATTEMPTS do
         entered, enterErr = QB.callback.trigger('qbmultichar:server:enterMode', 'selection')
@@ -268,6 +273,7 @@ local function returnToCharacterSelect()
 end
 
 RegisterNetEvent('qb-multicharacter:client:closeNUI', function()
+    previewGeneration = previewGeneration + 1
     SceneRuntime.endMode()
     leaveServerMode()
     closeNuiOnly()
@@ -318,7 +324,7 @@ RegisterNUICallback('multichar:createPreview', function(data, cb)
         refetchScenesIfEmpty()
         if generation ~= previewGeneration then return end
         local ok, err = SceneRuntime.loadCharacter(sceneCatalog[Config.defaultScene], model, {})
-        if generation ~= previewGeneration then return end
+        if generation ~= previewGeneration or err == 'stale preview' then return end
         send('multichar:previewReady', { citizenid = 'new', scene = Config.defaultScene, ok = ok, error = err })
     end)
     cb({ ok = true })
