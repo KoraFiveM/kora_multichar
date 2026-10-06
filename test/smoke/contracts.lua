@@ -17,7 +17,7 @@ local server, runtime, client, spawn, creator = read('server.lua'), read('scene.
 H.test('server owns private buckets and the replicated cinematic mode', function()
     H.truthy(server:find("Player(src).state:set('qbmultichar:mode'", 1, true), 'server must publish qbmultichar:mode')
     H.truthy(server:find("mode == 'creator' and Config.buckets.creatorBase or Config.buckets.selectionBase", 1, true), 'mode must select configured bucket base')
-    H.truthy(server:find("exports['qb-core']:SetPlayerBucket", 1, true), 'bucket changes should use qbcore compatibility')
+    H.truthy(server:find("exports.qbcore:setPlayerBucket", 1, true), 'bucket changes should use qbcore compatibility')
     H.truthy(server:find('session.previousBucket', 1, true), 'cleanup must restore the original bucket')
 end)
 

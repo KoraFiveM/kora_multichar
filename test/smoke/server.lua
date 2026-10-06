@@ -32,8 +32,7 @@ _G.TriggerEvent = function(name, src)
 end
 local loggedOut = {}
 local exportTable = {
-    ['qb-core'] = { SetPlayerBucket = function(_, src, bucket) buckets[src] = bucket; TriggerEvent('qbvoice:server:bucketChanged', src); return true end },
-    qbcore = {
+    qbcore = { setPlayerBucket = function(_, src, bucket) buckets[src] = bucket; TriggerEvent('qbvoice:server:bucketChanged', src); return true end,
         -- Mirrors Core.player.logout: clears the replicated login state (which
         -- is the ONLY thing the client follows back to selection) and reports
         -- false when there is no player handle to drop.
@@ -187,9 +186,9 @@ H.test('logout refuses without a character and during a cinematic session', func
 end)
 
 H.test('bucket notification covers the core and disabled-compat fallback exactly once', function()
-    local compatSetter = exportTable['qb-core'].SetPlayerBucket
+    local compatSetter = exportTable.qbcore.setPlayerBucket
     for _, available in ipairs({ true, false }) do
-        exportTable['qb-core'].SetPlayerBucket = available and compatSetter or function() error('compat disabled') end
+        exportTable.qbcore.setPlayerBucket = available and compatSetter or function() error('compat disabled') end
         states[7]['qbcore:loggedIn'] = false
         bucketNotices = {}
         H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
@@ -202,7 +201,7 @@ H.test('bucket notification covers the core and disabled-compat fallback exactly
         H.equal(bucketNotices[1].src, 7)
         H.equal(bucketNotices[1].bucket, 42, 'restore notifies after native')
     end
-    exportTable['qb-core'].SetPlayerBucket = compatSetter
+    exportTable.qbcore.setPlayerBucket = compatSetter
 end)
 
 H.report('server')

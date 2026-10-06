@@ -7,7 +7,7 @@ local sceneOwners = {}
 local sessions = {} -- [src] = { previousBucket, mode }
 
 local function setBucket(src, bucket)
-    local ok = pcall(function() exports['qb-core']:SetPlayerBucket(src, bucket) end)
+    local ok = pcall(function() exports.qbcore:setPlayerBucket(src, bucket) end)
     if not ok then
         SetPlayerRoutingBucket(src, bucket)
         TriggerEvent('qbvoice:server:bucketChanged', src)
