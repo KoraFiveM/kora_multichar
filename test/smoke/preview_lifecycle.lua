@@ -19,9 +19,9 @@ local function host(withClient)
         spawnFlight={liftDurationMs=0,minTravelDurationMs=0,maxTravelDurationMs=0,descentDurationMs=0}}
     e.QB={util={isFiniteNumber=function(v) return type(v)=='number' and v==v and math.abs(v)<math.huge end},
         stream={loadModel=function(model) return not q.failModels[model] and model or nil end},callback={},cache={}}
-    e.exports={qbcore={claimUI=noop}}
+    e.exports={kora_core={claimUI=noop}}
     e.PlayerPedId=function() return 1 end
-    e.GetCurrentResourceName=function() return 'qbmultichar' end
+    e.GetCurrentResourceName=function() return 'kora_multichar' end
     e.GetGameTimer=function() return 0 end
     e.GetResourceState=function() return 'stopped' end
     e.IsScreenFadedOut=function() return true end
@@ -170,7 +170,7 @@ for attempt=1,3 do
             elseif cancel=='finish' then e.multicharFinishSpawn(vector(50,0,0))
             elseif cancel=='cleanup' then e.SceneRuntime.cleanupScene()
             elseif cancel=='newfocus' then q.failModels.saved=nil; run(focus(e,q))
-            else for _,fn in ipairs(q.handlers.onClientResourceStop) do fn('qbmultichar') end end
+            else for _,fn in ipairs(q.handlers.onClientResourceStop) do fn('kora_multichar') end end
             local cameras,loads,ready,active=q.created,#q.loads,readyCount(q),q.active
             run(co)
             equal(q.created,cameras,'cancelled caller creates no camera')

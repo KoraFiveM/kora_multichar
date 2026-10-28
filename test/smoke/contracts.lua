@@ -17,7 +17,7 @@ local server, runtime, client, spawn, creator = read('server.lua'), read('scene.
 H.test('server owns private buckets and the replicated cinematic mode', function()
     H.truthy(server:find("Player(src).state:set('qbmultichar:mode'", 1, true), 'server must publish qbmultichar:mode')
     H.truthy(server:find("mode == 'creator' and Config.buckets.creatorBase or Config.buckets.selectionBase", 1, true), 'mode must select configured bucket base')
-    H.truthy(server:find("exports.qbcore:setPlayerBucket", 1, true), 'bucket changes should use qbcore compatibility')
+    H.truthy(server:find("exports.kora_core:setPlayerBucket", 1, true), 'bucket changes should use qbcore compatibility')
     H.truthy(server:find('session.previousBucket', 1, true), 'cleanup must restore the original bucket')
 end)
 
@@ -63,11 +63,11 @@ end)
 
 H.test('staff logout is permission-gated and travels on the replicated login state', function()
     H.truthy(server:find('QB.permissions.hasLevel', 1, true), 'staff gating must go through qblib, not a local rank table')
-    H.falsy(server:find('exports.qbcore:getPermission', 1, true),
+    H.falsy(server:find('exports.kora_core:getPermission', 1, true),
         "the hand-rolled rank table over qbcore's getPermission is gone")
     H.falsy(server:find('local ranks = {', 1, true), 'rank ordering belongs to qblib')
     H.truthy(server:find('Config.logout.minimumPermission', 1, true), 'the logout level must stay configurable')
-    H.truthy(server:find('exports.qbcore:logout(src)', 1, true), 'the character drop belongs to qbcore')
+    H.truthy(server:find('exports.kora_core:logout(src)', 1, true), 'the character drop belongs to qbcore')
     H.falsy(server:find("TriggerClientEvent('qb-multicharacter:client:chooseChar'", 1, true),
         'logout must not push character select; the client follows qbcore:loggedIn')
     H.truthy(client:find("AddStateBagChangeHandler('qbcore:loggedIn'", 1, true),
@@ -98,7 +98,7 @@ end)
 -- The cleared `qbmultichar:mode` bag is NOT a usable "player has spawned"
 -- signal: leaveServerMode runs before the teleport, and the clear replicates
 -- asynchronously on top of that. Consumers that must wait for a real spawn
--- (qbclothing's first-character fitting room) need an explicit event, fired
+-- (kora_clothing's first-character fitting room) need an explicit event, fired
 -- after the ped is placed and the fade-in has completed.
 H.test('spawn completion is announced as an event, after the fade-in', function()
     H.truthy(client:find("TriggerEvent('qbmultichar:client:spawnComplete'", 1, true), 'the finalizer must announce spawn completion')

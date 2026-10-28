@@ -152,7 +152,7 @@ local function exportDraft(registerCall)
     local body = SceneSchema.serializeLua(definition)
     local text
     if registerCall then
-        text = ("exports.qbmultichar:RegisterScene(%q, %s)"):format(normalized.id, body)
+        text = ("exports.kora_multichar:RegisterScene(%q, %s)"):format(normalized.id, body)
     else
         text = ("Config.scenes[%q] = %s"):format(normalized.id, body)
     end

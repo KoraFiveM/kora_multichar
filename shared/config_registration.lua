@@ -1,5 +1,5 @@
 -- The bundled scenes have finished extending Config.scenes by this point, so
--- they are included in the resource-owned qblib configuration catalog.
+-- they are included in the resource-owned kora_lib configuration catalog.
 local sceneOptions = {}
 for id, scene in pairs(Config.scenes) do
     sceneOptions[#sceneOptions + 1] = { value = id, label = scene.label or id }

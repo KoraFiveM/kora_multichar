@@ -1,6 +1,6 @@
 -- Own config, self-contained -- matches real qb-spawn's convention of owning
--- its data rather than reading qbcore's shared registries. Named `Config.*`,
--- not `QB.Spawns` (real qb-spawn's global) -- `qblib`'s `@qblib/init.lua`
+-- its data rather than reading kora_core's shared registries. Named `Config.*`,
+-- not `QB.Spawns` (real qb-spawn's global) -- `kora_lib`'s `@kora_lib/init.lua`
 -- already owns the global `QB` as a live cross-resource proxy in this
 -- codebase, so reusing that name here would shadow it. This has zero
 -- backward-compat impact: Lua globals never cross resource VMs, so a third
@@ -64,7 +64,7 @@ Config.scenes = {}
 
 -- Staff logout. `/logout` drops the character but keeps the connection, which
 -- is what real qb-multicharacter's own admin-only logout command does. The
--- level is checked through qblib's permission gateway, so the same ace/Discord
+-- level is checked through kora_lib's permission gateway, so the same ace/Discord
 -- grants that reach every other staff tool on the server reach this too.
 Config.logout = {
     enabled = true,
@@ -83,7 +83,7 @@ Config.creator = {
 }
 
 -- The spawn-picker's fixed location list, always offered alongside "last
--- location". `legion`/`pillbox` reuse qbcore/shared/locations.lua's
+-- location". `legion`/`pillbox` reuse kora_core/shared/locations.lua's
 -- spawn_legion/spawn_pillbox coordinates re-expressed as vector4; the rest
 -- are fresh defaults.
 --

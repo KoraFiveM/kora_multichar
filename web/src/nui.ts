@@ -1,4 +1,4 @@
-const resourceName = window.GetParentResourceName?.() ?? "qbmultichar";
+const resourceName = window.GetParentResourceName?.() ?? "kora_multichar";
 
 declare global {
   interface Window { GetParentResourceName?: () => string }

@@ -232,8 +232,8 @@ local function applyFallbackSkin(ped, skin)
 end
 
 local function applyAppearance(ped, model, skin)
-    if GetResourceState('qbclothing') == 'started' then
-        local ok, applied = pcall(function() return exports.qbclothing:ApplyAppearanceToPed(ped, model, skin or {}) end)
+    if GetResourceState('kora_clothing') == 'started' then
+        local ok, applied = pcall(function() return exports.kora_clothing:ApplyAppearanceToPed(ped, model, skin or {}) end)
         if ok and applied == true then return end
     end
     applyFallbackSkin(ped, skin)

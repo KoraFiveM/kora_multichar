@@ -1,5 +1,5 @@
--- Live-location spawn carousel. The character is already adopted by qbcore at
--- this point but remains hidden in qbmultichar's selection bucket until a
+-- Live-location spawn carousel. The character is already adopted by kora_core at
+-- this point but remains hidden in kora_multichar's selection bucket until a
 -- destination is confirmed.
 
 local spawnLocations = {}
@@ -118,7 +118,7 @@ RegisterNUICallback('multichar:spawn:choose', function(data, cb)
 end)
 
 RegisterNUICallback('multichar:spawn:exit', function(_, cb)
-    -- Once qbcore has adopted a character there is no safe "back" operation;
+    -- Once kora_core has adopted a character there is no safe "back" operation;
     -- force an explicit destination instead of stranding a hidden live player.
     send('multichar:error', 'Choose a spawn location to continue.')
     cb({ ok = false, mandatory = true })

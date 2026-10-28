@@ -7,7 +7,7 @@ local sceneOwners = {}
 local sessions = {} -- [src] = { previousBucket, mode }
 
 local function setBucket(src, bucket)
-    local ok = pcall(function() exports.qbcore:setPlayerBucket(src, bucket) end)
+    local ok = pcall(function() exports.kora_core:setPlayerBucket(src, bucket) end)
     if not ok then
         SetPlayerRoutingBucket(src, bucket)
         TriggerEvent('qbvoice:server:bucketChanged', src)
@@ -17,8 +17,8 @@ end
 -- Cleared mode is published as `false`, NOT as nil. Setting a state bag key to
 -- nil is a DELETION, and a deletion does not replicate to the owning client the
 -- way an ordinary value change does -- the client keeps reading the last mode
--- forever. Every consumer gates on this key (qbhud's HUD stays hidden while a
--- cinematic mode is active, qbclothing's first-character flow waits on it), so
+-- forever. Every consumer gates on this key (kora_hud's HUD stays hidden while a
+-- cinematic mode is active, kora_clothing's first-character flow waits on it), so
 -- a clear that never lands leaves the HUD hidden for the whole session. An
 -- explicit falsy value keeps the clear a normal replicated change. Readers
 -- treat nil and false alike, so nothing breaks if this key was never set.
@@ -118,9 +118,9 @@ QB.callback.register('qbmultichar:server:leaveMode', function(src)
     return leaveMode(src)
 end, { rateLimit = { max = 8, window = 10000 } })
 
--- Staff gating goes through qblib's permission gateway rather than a rank
--- table over qbcore's getPermission. QB.permissions.hasLevel accepts either
--- `qbcore.<level>` or the bare `group.<level>` principal (which is how this
+-- Staff gating goes through kora_lib's permission gateway rather than a rank
+-- table over kora_core's getPermission. QB.permissions.hasLevel accepts either
+-- `kora_core.<level>` or the bare `group.<level>` principal (which is how this
 -- test server's server.cfg actually grants admin), folds in Discord roles
 -- where a server maps them, and owns the cascade -- so a 'god' satisfies an
 -- 'admin' requirement without chaining ace principals by hand.
@@ -154,7 +154,7 @@ if Config.creator.enabled then
 end
 
 -- Staff logout. This drops the character and keeps the connection; it does NOT
--- tell any client to reopen character select. qbcore's logout clears the
+-- tell any client to reopen character select. kora_core's logout clears the
 -- replicated `qbcore:loggedIn` state, and client.lua follows that state --
 -- so an admin resource or a character delete on a live handle returns the
 -- player to selection through exactly the same path this command does.
@@ -172,7 +172,7 @@ if Config.logout.enabled then
             QB.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
             return
         end
-        local ok, result = pcall(function() return exports.qbcore:logout(src) end)
+        local ok, result = pcall(function() return exports.kora_core:logout(src) end)
         if not ok or result ~= true then
             QB.notify.send(src, { type = 'error', message = 'Could not log out of that character.' })
         end

@@ -1,4 +1,4 @@
--- Actual SceneRuntime/schema and qblib stream/loop APIs; all native boundaries
+-- Actual SceneRuntime/schema and kora_lib stream/loop APIs; all native boundaries
 -- are controlled recorders. Release calls are measured, not native memory,
 -- animation/FX geometry, or real engine ownership/reference-count behavior.
 -- Run with test/run.sh; optional arguments: resource root, support root, scene source.
@@ -7,7 +7,7 @@ local root = arg[1] or scriptDir .. '../../'
 local support = arg[2] or root
 if root:sub(-1) ~= '/' then root = root .. '/' end
 if support:sub(-1) ~= '/' then support = support .. '/' end
-local qblib = support .. '../qblib/'
+local qblib = support .. '../kora_lib/'
 package.path = support .. 'test/?.lua;' .. package.path
 local H = require('harness')
 local scenePath = arg[3] or root .. 'scene.lua'
@@ -36,7 +36,7 @@ local function fresh()
     CreateThread = function(fn) world.threads[#world.threads + 1] = coroutine.create(fn) end
     SetTimeout = function() end -- duration callbacks remain inert; explicit cleanup is under test.
     AddEventHandler = function(name, fn) world.handlers[name] = fn end
-    GetCurrentResourceName = function() return 'qbmultichar' end
+    GetCurrentResourceName = function() return 'kora_multichar' end
     IsModelValid, HasModelLoaded = function() return true end, function() return true end
     RequestModel, SetModelAsNoLongerNeeded = noop, noop
     DoesAnimDictExist = function(name) return name ~= 'invalid_dict' end
@@ -257,7 +257,7 @@ H.test('own stop cleans pending animation without continuation', function()
     eq(step(old), 'suspended', 'own anim request is held in actual helper at resource stop')
     world.handlers.onClientResourceStop('unrelated_resource')
     eq(count('remove-anim', 'stopped_pending'), 0, 'foreign stop leaves pending own animation request alone')
-    world.handlers.onClientResourceStop('qbmultichar')
+    world.handlers.onClientResourceStop('kora_multichar')
     eq(count('remove-anim', 'stopped_pending'), 1, 'terminal own stop releases pending animation without resuming caller')
     do
         world.anim.stopped_pending = true; finish(old)
@@ -269,7 +269,7 @@ H.test('own stop cleans pending particle without continuation', function()
     fresh(); show(); world.heldPtfx.stopped_fx = true
     old = coroutine.create(function() SceneRuntime.playCue({ type = 'particle', target = 'character', asset = 'stopped_fx', effect = 'fixture_fx' }) end)
     eq(step(old), 'suspended', 'own particle request is held in actual helper at resource stop')
-    world.handlers.onClientResourceStop('qbmultichar')
+    world.handlers.onClientResourceStop('kora_multichar')
     eq(count('remove-ptfx', 'stopped_fx'), 1, 'terminal own stop releases pending particle without resuming caller')
 end)
 
@@ -279,7 +279,7 @@ H.test('own stop retains and cleans retired pending requests', function()
     eq(step(old), 'suspended', 'retired scene still has a pending owned dictionary')
     SceneRuntime.cleanupScene()
     eq(count('remove-anim', 'retired_pending'), 0, 'normal cleanup leaves pending request to bounded completion')
-    world.handlers.onClientResourceStop('qbmultichar')
+    world.handlers.onClientResourceStop('kora_multichar')
     eq(count('remove-anim', 'retired_pending'), 1, 'terminal stop also releases a retired-scene pending request')
 end)
 
@@ -287,7 +287,7 @@ H.test('foreign stop leaves owned assets and own stop disposes them', function()
     fresh(); show('stop_dict')
     world.handlers.onClientResourceStop('unrelated_resource')
     eq(count('remove-anim', 'stop_dict'), 0, 'foreign resource stop does not touch owned scene acquisitions')
-    world.handlers.onClientResourceStop('qbmultichar')
+    world.handlers.onClientResourceStop('kora_multichar')
     eq(count('remove-anim', 'stop_dict'), 1, 'own resource stop releases acquired dictionary')
 end)
 

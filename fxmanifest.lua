@@ -2,18 +2,20 @@ fx_version 'cerulean'
 game 'gta5'
 lua54 'yes'
 
-name 'qbmultichar'
+name 'kora_multichar'
+-- Keep the legacy resource name resolvable for exports['qbmultichar'] callers.
+provide 'qbmultichar'
 author 'Jamie'
 version '3.0.0'
 description 'Cinematic character selection, live spawn previews, and scene studio for qbcore'
 
-dependency 'qbtheme'
-dependency 'qblib'
-dependency 'qbcore'
+dependency 'kora_theme'
+dependency 'kora_lib'
+dependency 'kora_core'
 
 -- This resource now fully implements both legacy UIs -- character select AND
--- spawn selection -- unlike qbcore, which deliberately does NOT provide
--- 'qb-multicharacter' (see qbcore/fxmanifest.lua's comment: hijacking a name
+-- spawn selection -- unlike kora_core, which deliberately does NOT provide
+-- 'qb-multicharacter' (see kora_core/fxmanifest.lua's comment: hijacking a name
 -- you don't fully replace would silently break a real UI resource a server
 -- wants to keep). This one does fully replace them, so it claims both names.
 provide 'qb-multicharacter'
@@ -22,20 +24,20 @@ provide 'qb-spawn'
 ui_page 'web/build/index.html'
 
 -- A bare trailing '**' does NOT match files in FiveM's resource globber --
--- needs the explicit '/*' (see qblib/fxmanifest.lua's comment on the same issue).
+-- needs the explicit '/*' (see kora_lib/fxmanifest.lua's comment on the same issue).
 files {
     'web/build/index.html',
     'web/build/**/*',
 }
 
--- Required to reach qblib APIs -- see qblib's own AGENTS.md for why this is how
+-- Required to reach kora_lib APIs -- see kora_lib's own AGENTS.md for why this is how
 -- a consumer resource pulls in the QB proxy (init.lua). NUI messaging itself
 -- goes through the raw natives (SendNUIMessage/RegisterNUICallback) instead
 -- of QB.nui.* -- this resource owns its own frame now, and QB.nui.* would
--- dispatch into qblib's own resource VM/frame via the cross-resource export
+-- dispatch into kora_lib's own resource VM/frame via the cross-resource export
 -- call, not this one.
 shared_scripts {
-    '@qblib/init.lua',
+    '@kora_lib/init.lua',
     'config.lua',
     'shared/scene.lua',
     'scenes.lua',
@@ -45,7 +47,7 @@ shared_scripts {
 server_script 'server.lua'
 
 client_scripts {
-    '@qbtheme/client/bridge.lua',
+    '@kora_theme/client/bridge.lua',
     'scene.lua',
     'client.lua',
     'spawn.lua',

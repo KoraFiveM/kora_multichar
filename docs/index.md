@@ -1,10 +1,10 @@
 ---
 layout: default
-title: qbmultichar
+title: kora_multichar
 ---
 
 Cinematic character selection, live spawn previews, and an in-game scene
-studio for qbcore. It fully replaces both legacy UIs and keeps the upstream
+studio for kora_core. It fully replaces both legacy UIs and keeps the upstream
 `qb-multicharacter` and `qb-spawn` event/callback protocols.
 
 Selecting a character only previews their saved appearance. The character is
@@ -14,17 +14,17 @@ shows each real destination.
 
 ## Requirements
 
-- [qblib](https://qbcore2.github.io/qblib/)
-- [qbcore](https://qbcore2.github.io/qbcore/)
-- [qbclothing](https://qbcore2.github.io/qbclothing/) — optional, but the
+- [qblib](https://qbcore2.github.io/kora_lib/)
+- [qbcore](https://qbcore2.github.io/kora_core/)
+- [qbclothing](https://qbcore2.github.io/kora_clothing/) — optional, but the
   supported saved-clothing and tattoo provider
 
 ```cfg
-ensure qbsql
-ensure qblib
-ensure qbcore
-ensure qbclothing
-ensure qbmultichar
+ensure kora_sql
+ensure kora_lib
+ensure kora_core
+ensure kora_clothing
+ensure kora_multichar
 ```
 
 No database migration is needed. The compiled React/Vite NUI is committed in
@@ -41,7 +41,7 @@ build` from the `web` directory.
 - **Continue** is the only login action. Deletion is secondary and requires the
   exact visible character name.
 - Creation accepts first name, last name, real non-future `YYYY-MM-DD` birth
-  date, male/female freemode body model, and nationality. qbcore validates and
+  date, male/female freemode body model, and nationality. kora_core validates and
   normalizes these again server-side; slot, phone, starting job/gang, and money
   are never client-selected.
 - Spawn choice is mandatory after an existing character loads. Fixed, last,
@@ -56,7 +56,7 @@ build` from the `web` directory.
 - New characters bypass the spawn carousel and land immediately at
   `Config.defaultSpawn`, which **is** `Config.spawns[1].coords` — the first
   location the picker offers and where a new character wakes up are one
-  decision, so reordering that list moves both. qbclothing's mandatory
+  decision, so reordering that list moves both. kora_clothing's mandatory
   first-character creator waits for that spawn to complete before opening.
 - The UI never reports a working preview as a broken one. It sizes its own
   timeout from the budget Lua ships with the spawn payload
@@ -96,7 +96,7 @@ build` from the `web` directory.
   than showing someone a city spawn they did not choose.
 
 The server publishes `LocalPlayer.state['qbmultichar:mode']` as `selection`,
-`spawn`, `creator`, or `nil`. qbhud observes it and stays hidden until the
+`spawn`, `creator`, or `nil`. kora_hud observes it and stays hidden until the
 cinematic mode is completely cleaned up.
 
 ## Spawn completion
@@ -113,7 +113,7 @@ Use this, not the cleared `qbmultichar:mode` state bag, to gate anything that
 must not run before the player can see themselves. The mode is cleared *before*
 the teleport (the bucket has to be restored first) and its clear replicates
 asynchronously on top of that, so a watcher of the bag can wake mid-teleport.
-That is what used to put qbclothing's first-character fitting room on screen
+That is what used to put kora_clothing's first-character fitting room on screen
 ahead of the spawn.
 
 ## Bundled scenes and resolution
@@ -250,7 +250,7 @@ that resource stops. Changes are broadcast to connected selectors.
 
 ```lua
 -- server, in another resource
-local ok, err = exports.qbmultichar:RegisterScene('taxi_depot', {
+local ok, err = exports.kora_multichar:RegisterScene('taxi_depot', {
     label = 'Downtown Cab Co.', priority = 200,
     selectors = { { job = 'taxi' } },
     anchor = vector4(903.100, -170.200, 74.100, 235.000),
@@ -271,7 +271,7 @@ local ok, err = exports.qbmultichar:RegisterScene('taxi_depot', {
 })
 if not ok then print(err) end
 
-exports.qbmultichar:UnregisterScene('taxi_depot')
+exports.kora_multichar:UnregisterScene('taxi_depot')
 ```
 
 ### `RegisterScene(sceneId, definition)`
@@ -288,7 +288,7 @@ Returns `true`, or `false, error`. Ownership is checked server-side.
 `/logout` drops the staff member's character while keeping their connection,
 putting them straight back into character select. It is gated exactly like the
 scene studio: `Config.logout.minimumPermission` (default `admin`), resolved
-server-side through qblib's permission gateway, so `qbcore.admin`, the bare
+server-side through kora_lib's permission gateway, so `qbcore.admin`, the bare
 `group.admin` ace, and any Discord roles a server maps all satisfy it, and a
 `god` cascades past an `admin` requirement.
 
@@ -304,7 +304,7 @@ The command refuses while a character-select, spawn, or scene-studio session is
 open — those own the routing bucket and camera, and dropping the character
 under them would strand the client in a scene it cannot leave.
 
-The command itself only calls qbcore's logout. Returning to character select
+The command itself only calls kora_core's logout. Returning to character select
 is driven by the replicated `qbcore:loggedIn` state that logout clears, not by
 an event this resource sends, so **any** logout path lands back in selection —
 an admin resource calling the core export, or a character delete that logs out
@@ -318,14 +318,14 @@ metadata, selectors, environment, character placement, local entities,
 cameras, and timeline cues.
 
 - Press **Tab** to switch between the themed inspector and freecam.
-- Freecam uses qblib's shared camera lifecycle with mouse look, WASD, Q/E
+- Freecam uses kora_lib's shared camera lifecycle with mouse look, WASD, Q/E
   vertical movement, and Shift boost. Native instructional buttons show the
   live bindings while freecam is active.
 - Placement and camera capture use crosshair raycasts and store relative
   coordinates.
 - Timeline controls support cue editing, scrubbing, looping, and live preview.
 - **Copy Config** and **Copy Registration** generate stable, sorted Lua with
-  three-decimal coordinates through qblib's clipboard support.
+  three-decimal coordinates through kora_lib's clipboard support.
 
 The studio never writes resource files or a database. Paste the copied output
 into configuration or another resource after reviewing it.
@@ -371,7 +371,7 @@ automatically, sorted by label behind the configured spawns.
 ## Isolation and cleanup
 
 Selection/spawn sessions use bucket `1100000 + source`; creator sessions use
-`1200000 + source`. The previous bucket is restored through qbcore's bucket
+`1200000 + source`. The previous bucket is restored through kora_core's bucket
 compatibility API. One cleanup path tears down cameras, focus, load scenes,
 entities, particles, native sounds, weather/time/timecycle overrides, NUI
 focus, hidden/frozen ped state, and the replicated mode on success, errors,
@@ -394,5 +394,5 @@ the established callbacks/events, including:
 'qb-spawn:client:openUI'
 ```
 
-qbclothing protects preview appearance reads with qbcore ownership checks,
+kora_clothing protects preview appearance reads with kora_core ownership checks,
 soft-delete filtering, sanitization, rate limiting, and a per-selection cache.

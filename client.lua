@@ -1,5 +1,5 @@
 -- Character-select orchestration. The NUI owns presentation, SceneRuntime
--- owns the disposable world, and qbcore's legacy compatibility events remain
+-- owns the disposable world, and kora_core's legacy compatibility events remain
 -- the only character lifecycle transport exposed to other resources.
 
 local characters = {}
@@ -10,7 +10,7 @@ local selectedCharacter = nil
 local previewGeneration = 0
 local currentMode = nil
 
-exports.qbcore:claimUI()
+exports.kora_core:claimUI()
 
 local function send(action, data)
     SendNUIMessage({ action = action, data = data })
@@ -141,7 +141,7 @@ end
 local pendingNewCharacter = false
 
 -- The "you are actually in the world now" signal, for resources that must not
--- act until the player is spawned (qbclothing's first-character fitting room
+-- act until the player is spawned (kora_clothing's first-character fitting room
 -- is the reason this exists). Deliberately NOT the cleared `qbmultichar:mode`
 -- state bag: leaveServerMode runs BEFORE the teleport below, and the bag clear
 -- replicates asynchronously on top of that, so anything watching the bag can
@@ -238,17 +238,17 @@ end
 
 RegisterNetEvent('qb-multicharacter:client:chooseChar', refreshCharacters)
 
--- Returning to character select after a logout follows qbcore's replicated
--- login state instead of a private event. qbcore's logout only flushes the
+-- Returning to character select after a logout follows kora_core's replicated
+-- login state instead of a private event. kora_core's logout only flushes the
 -- character, clears `qbcore:loggedIn`, and fires its unload events -- it never
 -- tells a character-select UI anything. Watching the state bag means EVERY
--- logout path lands here: qbmultichar's own /logout, an admin resource calling
+-- logout path lands here: kora_multichar's own /logout, an admin resource calling
 -- the core export, or a delete that logs out a live handle.
 --
 -- Raw AddStateBagChangeHandler rather than QB.state.onChange, for the reason
--- fxmanifest.lua gives for the NUI natives: the qblib call registers the
--- handler inside qblib's own VM and relays every change back over a
--- cross-resource funcref. qbhud and qbclothing watch this same key the same way.
+-- fxmanifest.lua gives for the NUI natives: the kora_lib call registers the
+-- handler inside kora_lib's own VM and relays every change back over a
+-- cross-resource funcref. kora_hud and kora_clothing watch this same key the same way.
 local returningToSelection = false
 
 local function returnToCharacterSelect()
@@ -279,7 +279,7 @@ RegisterNetEvent('qb-multicharacter:client:closeNUI', function()
     closeNuiOnly()
 end)
 
--- qbcore fires this only on successful character creation, so it is the one
+-- kora_core fires this only on successful character creation, so it is the one
 -- place that knows the spawn about to run belongs to a brand-new character.
 -- A new character has no saved location to choose from: land at the configured
 -- first-arrival point immediately. In particular, do not open the cinematic

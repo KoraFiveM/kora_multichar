@@ -12,7 +12,7 @@ local callbacks, handlers, exported, clientEvents = {}, {}, {}, {}
 local buckets, states = { [7] = 42 }, { [7] = { ['qbcore:loggedIn'] = false } }
 local invokingResource = nil
 
-_G.GetCurrentResourceName = function() return 'qbmultichar' end
+_G.GetCurrentResourceName = function() return 'kora_multichar' end
 _G.GetInvokingResource = function() return invokingResource end
 _G.GetPlayerRoutingBucket = function(src) return buckets[src] or 0 end
 _G.SetPlayerRoutingBucket = function(src, bucket) buckets[src] = bucket end
@@ -32,7 +32,7 @@ _G.TriggerEvent = function(name, src)
 end
 local loggedOut = {}
 local exportTable = {
-    qbcore = { setPlayerBucket = function(_, src, bucket) buckets[src] = bucket; TriggerEvent('qbvoice:server:bucketChanged', src); return true end,
+    kora_core = { setPlayerBucket = function(_, src, bucket) buckets[src] = bucket; TriggerEvent('qbvoice:server:bucketChanged', src); return true end,
         -- Mirrors Core.player.logout: clears the replicated login state (which
         -- is the ONLY thing the client follows back to selection) and reports
         -- false when there is no player handle to drop.
@@ -72,7 +72,7 @@ _G.QB = {
     },
 }
 
--- Mirrors qblib's command dispatcher: a non-'user' permission needs a
+-- Mirrors kora_lib's command dispatcher: a non-'user' permission needs a
 -- checkPermission that returns true, or the command never reaches its handler.
 local function runCommand(name, src)
     local definition = assert(commandDefs[name], ('command %s was never registered'):format(name))
@@ -115,7 +115,7 @@ H.test('creator command uses its own bucket and resource stop restores it', func
     H.equal(states[7]['qbmultichar:mode'], 'creator', 'creator state')
     H.equal(clientEvents[#clientEvents].name, 'qbmultichar:client:openCreator', 'protected command opens client studio')
 
-    for _, handler in ipairs(handlers.onResourceStop) do handler('qbmultichar') end
+    for _, handler in ipairs(handlers.onResourceStop) do handler('kora_multichar') end
     H.equal(buckets[7], 42, 'resource stop restores original bucket')
     H.equal(states[7]['qbmultichar:mode'], false, 'resource stop publishes an explicit cleared mode')
 end)
@@ -186,9 +186,9 @@ H.test('logout refuses without a character and during a cinematic session', func
 end)
 
 H.test('bucket notification covers the core and disabled-compat fallback exactly once', function()
-    local compatSetter = exportTable.qbcore.setPlayerBucket
+    local compatSetter = exportTable.kora_core.setPlayerBucket
     for _, available in ipairs({ true, false }) do
-        exportTable.qbcore.setPlayerBucket = available and compatSetter or function() error('compat disabled') end
+        exportTable.kora_core.setPlayerBucket = available and compatSetter or function() error('compat disabled') end
         states[7]['qbcore:loggedIn'] = false
         bucketNotices = {}
         H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
@@ -201,7 +201,7 @@ H.test('bucket notification covers the core and disabled-compat fallback exactly
         H.equal(bucketNotices[1].src, 7)
         H.equal(bucketNotices[1].bucket, 42, 'restore notifies after native')
     end
-    exportTable.qbcore.setPlayerBucket = compatSetter
+    exportTable.kora_core.setPlayerBucket = compatSetter
 end)
 
 H.report('server')
