@@ -15,7 +15,7 @@ local function host(withClient)
     local e = {}; for key, value in pairs(_G) do e[key] = value end
     local q={created=0,active=nil,rendered=false,cameras={},traces={},threads={},events={},handlers={},nui={},loads={},failModels={},pauseTrace=false}
     e.vector3, e.vector4 = vector, vector
-    e.Config={defaultScene='default',defaultSpawn=vector(25,0,0,0),sceneLimits={streamTimeoutMs=1,worldStreamTimeoutMs=1},
+    e.Config={ui={closeCreateOnBackdrop=false,confirmDiscardOnClose=true},previewWatchdogMs=0,defaultScene='default',defaultSpawn=vector(25,0,0,0),sceneLimits={streamTimeoutMs=1,worldStreamTimeoutMs=1},
         spawnFlight={liftDurationMs=0,minTravelDurationMs=0,maxTravelDurationMs=0,descentDurationMs=0}}
     e.QB={util={isFiniteNumber=function(v) return type(v)=='number' and v==v and math.abs(v)<math.huge end},
         stream={loadModel=function(model) return not q.failModels[model] and model or nil end},callback={},cache={}}
@@ -191,6 +191,14 @@ for _,cancel in ipairs({'close','cleanup','newfocus'}) do
         equal(readyCount(q),ready,'retired new preview stays silent')
     end)
 end
+H.test('new-character preview still answers the NUI when the scene load throws', function()
+    local e,q=host(true)
+    e.SceneRuntime.loadCharacter=function() error('boom') end
+    local ready=readyCount(q); run(focus(e,q,true))
+    equal(readyCount(q),ready+1,'a throwing load still reports previewReady')
+    local last=q.messages[#q.messages]
+    equal(last.action,'multichar:previewReady'); equal(last.data.ok,false)
+end)
 -- These await phases precede SceneRuntime generation capture entirely.
 for _,phase in ipairs({'skin','catalog','newcatalog'}) do
     for _,cancel in ipairs({'close','finish','spawn','reentry','delete'}) do

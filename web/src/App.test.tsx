@@ -346,18 +346,62 @@ describe('spawn and studio', () => {
       expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Alex');
     });
 
-    it('asks before X or Escape discards typed data', () => {
+    it('asks in the page, never via window.confirm, before X or Escape discards typed data', () => {
+      // The game browser answers window.confirm with "no"; the dialog must not depend on it.
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
       openCreate();
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
-      fireEvent.keyDown(window, { key: 'Escape' });
-      expect(confirm).toHaveBeenCalledTimes(2);
-      expect(screen.getByLabelText('First name')).toBeTruthy();
+      expect(screen.getByText('Discard the identity details you entered?')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Keep editing' }));
+      expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Alex');
 
-      confirm.mockReturnValue(true);
       fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.getByText('Discard the identity details you entered?')).toBeTruthy();
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByText('Discard the identity details you entered?')).toBeNull();
+
+      fireEvent.keyDown(window, { key: 'Escape' });
+      fireEvent.click(screen.getByRole('button', { name: 'Discard' }));
       expect(screen.queryByLabelText('First name')).toBeNull();
+      expect(confirm).not.toHaveBeenCalled();
       confirm.mockRestore();
+    });
+
+    it('closes at once when confirmDiscardOnClose is off', () => {
+      render(<App />);
+      message('multichar:show', { characters: [], maxCharacters: 1, ui: { confirmDiscardOnClose: false } });
+      act(() => vi.advanceTimersByTime(121));
+      message('multichar:previewReady', { scene: 'civilian', ok: true });
+      fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Alex' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.queryByLabelText('First name')).toBeNull();
+    });
+
+    it('keeps the draft and stays usable while the model is toggled any number of times', () => {
+      openCreate();
+      fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'User' } });
+      for (const name of ['Female model', 'Male model', 'Female model', 'Male model']) {
+        fireEvent.click(screen.getByRole('button', { name }));
+        expect(document.querySelector('.scene-transition')).toBeNull();
+        expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Alex');
+        expect((screen.getByLabelText('Last name') as HTMLInputElement).value).toBe('User');
+      }
+      message('multichar:previewReady', { scene: 'civilian', ok: true });
+      expect(nui.fetch).toHaveBeenLastCalledWith('multichar:createPreview', { gender: 0 });
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(screen.getByRole('button', { name: 'Keep editing' })).toBeTruthy();
+    });
+
+    it('never lets a stuck loading cover sit on top of the dialog', () => {
+      render(<App />);
+      message('multichar:show', { characters: [], maxCharacters: 1 });
+      act(() => vi.advanceTimersByTime(121));
+      message('multichar:previewReady', { scene: 'civilian', ok: true });
+      fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+      message('multichar:previewLoading', { citizenid: 'new' });
+      expect(document.querySelector('.scene-transition')).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Female model' }));
     });
 
     it('closes without a prompt when the form is untouched', () => {

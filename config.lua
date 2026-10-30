@@ -67,6 +67,11 @@ Config.ui = {
     -- Clicking outside the Create Identity dialog closes it. Off by default so
     -- a stray click cannot throw away a half-typed identity.
     closeCreateOnBackdrop = false,
+    -- X, Cancel and Escape ask before discarding a half-typed identity. The
+    -- question is drawn inside the dialog: a native window.confirm() is not
+    -- shown by the game's embedded browser and answers "no", which left the
+    -- dialog impossible to close once any name was typed. false closes at once.
+    confirmDiscardOnClose = true,
 }
 
 -- Custom static scenes may be added here. scenes.lua merges the six bundled

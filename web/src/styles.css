@@ -167,3 +167,6 @@ textarea { resize: vertical; }
 }
 @media (max-height: 720px) { .creator-left, .creator-right { bottom: 166px; }.timeline { bottom: 62px; height: 90px; }.carousel-shell { bottom: 38px; }.dossier { bottom: 172px; }.key-hints { display: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
+
+.discard-prompt { display: grid; gap: 10px; margin-top: 4px; border: 1px solid hsl(var(--brand-border)); border-radius: 10px; padding: 12px; background: hsl(var(--popover) / .9); font-size: 12px; }
+.discard-prompt p { margin: 0; }

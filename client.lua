@@ -232,7 +232,10 @@ local function refreshCharacters()
         characters = characters,
         maxCharacters = maxCharacters,
         previewWatchdogMs = Config.previewWatchdogMs,
-        ui = { closeCreateOnBackdrop = Config.ui.closeCreateOnBackdrop },
+        ui = {
+            closeCreateOnBackdrop = Config.ui.closeCreateOnBackdrop,
+            confirmDiscardOnClose = Config.ui.confirmDiscardOnClose,
+        },
     })
     -- Say it on screen rather than letting the player sit on "Loading scene..."
     -- forever while every preview quietly fails to resolve a scene.
@@ -334,7 +337,10 @@ RegisterNUICallback('multichar:createPreview', function(data, cb)
     CreateThread(function()
         refetchScenesIfEmpty()
         if generation ~= previewGeneration then return end
-        local ok, err = SceneRuntime.loadCharacter(sceneCatalog[Config.defaultScene], model, {})
+        -- pcall: a throw here would end the thread without a reply, and the
+        -- NUI would wait on a preview that never comes.
+        local called, ok, err = pcall(SceneRuntime.loadCharacter, sceneCatalog[Config.defaultScene], model, {})
+        if not called then ok, err = false, tostring(ok) end
         if generation ~= previewGeneration or err == 'stale preview' then return end
         send('multichar:previewReady', { citizenid = 'new', scene = Config.defaultScene, ok = ok, error = err })
     end)

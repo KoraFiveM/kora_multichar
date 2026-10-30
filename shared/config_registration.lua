@@ -27,4 +27,9 @@ Config.ui.closeCreateOnBackdrop = QB.config.boolean(Config.ui.closeCreateOnBackd
     label = 'Close Create Identity on outside click',
     description = 'When enabled, clicking outside the Create Identity dialog closes it. When disabled, only the close button, Cancel or Escape closes it, so a stray click cannot discard typed details. Applies the next time character select opens.',
 })
+Config.ui.confirmDiscardOnClose = QB.config.boolean(Config.ui.confirmDiscardOnClose, {
+    live = true,
+    label = 'Confirm before discarding Create Identity details',
+    description = 'When enabled, closing the Create Identity dialog with the close button, Cancel or Escape after typing asks "Discard?" inside the dialog first. When disabled it closes immediately and the typed details are cleared. Applies the next time character select opens.',
+})
 Config = QB.config.adopt(Config)

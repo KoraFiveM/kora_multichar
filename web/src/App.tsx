@@ -41,6 +41,7 @@ export function App() {
   // From the show payload; 0 disables the watchdog.
   const [previewWatchdogMs, setPreviewWatchdogMs] = useState(0);
   const [closeCreateOnBackdrop, setCloseCreateOnBackdrop] = useState(false);
+  const [confirmDiscard, setConfirmDiscard] = useState(true);
   // Kept here, not in the dialog, so closing and reopening restores typed values.
   const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE_DRAFT);
   // What the spawn preview is currently waiting on, for the cover's subtitle.
@@ -74,9 +75,10 @@ export function App() {
     const listener = (event: MessageEvent<NuiMessage>) => {
       const { action, data } = event.data || {};
       if (action === "multichar:show") {
-        const payload = data as { characters?: unknown; maxCharacters?: number; previewWatchdogMs?: number; ui?: { closeCreateOnBackdrop?: boolean } };
+        const payload = data as { characters?: unknown; maxCharacters?: number; previewWatchdogMs?: number; ui?: { closeCreateOnBackdrop?: boolean; confirmDiscardOnClose?: boolean } };
         setPreviewWatchdogMs(Math.max(0, Number(payload?.previewWatchdogMs) || 0));
         setCloseCreateOnBackdrop(payload?.ui?.closeCreateOnBackdrop === true);
+        setConfirmDiscard(payload?.ui?.confirmDiscardOnClose !== false);
         setCreateDraft(EMPTY_CREATE_DRAFT);
         setCharacters(normalizeCharacters(payload?.characters));
         setMaxCharacters(Number(payload?.maxCharacters) || 5);
@@ -265,8 +267,8 @@ export function App() {
       {stage === "creator" && creatorDraft && (
         <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
       )}
-      {previewing && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} />}
-      {creating && <CreateDialog draft={createDraft} onDraft={setCreateDraft} closeOnBackdrop={closeCreateOnBackdrop} onClose={() => setCreating(false)} onBusy={setBusy} />}
+      {previewing && !creating && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} />}
+      {creating && <CreateDialog draft={createDraft} onDraft={setCreateDraft} closeOnBackdrop={closeCreateOnBackdrop} confirmDiscard={confirmDiscard} onClose={() => setCreating(false)} onBusy={setBusy} />}
       {deleting && character && <DeleteDialog character={character} onClose={() => setDeleting(false)} onBusy={setBusy} />}
     </div>
   );
@@ -366,22 +368,31 @@ function Dossier({ character, onClose, onDelete }: { character: Character; onClo
 type CreateDraft = { firstname: string; lastname: string; birthdate: string; nationality: string; gender: number };
 const EMPTY_CREATE_DRAFT: CreateDraft = { firstname: "", lastname: "", birthdate: "2000-01-01", nationality: "USA", gender: 0 };
 
-function CreateDialog({ draft, onDraft, closeOnBackdrop, onClose, onBusy }: { draft: CreateDraft; onDraft: (draft: CreateDraft) => void; closeOnBackdrop: boolean; onClose: () => void; onBusy: (value: boolean) => void }) {
+function CreateDialog({ draft, onDraft, closeOnBackdrop, confirmDiscard, onClose, onBusy }: { draft: CreateDraft; onDraft: (draft: CreateDraft) => void; closeOnBackdrop: boolean; confirmDiscard: boolean; onClose: () => void; onBusy: (value: boolean) => void }) {
   const [error, setError] = useState("");
   const dirty = draft.firstname !== "" || draft.lastname !== "" || draft.birthdate !== EMPTY_CREATE_DRAFT.birthdate || draft.nationality !== EMPTY_CREATE_DRAFT.nationality;
   const setField = (field: keyof CreateDraft, value: string | number) => onDraft({ ...draft, [field]: value });
   // X, Cancel and Escape are deliberate, so they ask before discarding typed data.
+  // The question is drawn in the page: the game's browser does not show
+  // window.confirm() and answers "no", which made X, Cancel and Escape do
+  // nothing as soon as a name was typed.
+  const [asking, setAsking] = useState(false);
   const requestClose = () => {
-    if (dirty && !window.confirm("Discard the identity details you entered?")) return;
+    if (dirty && confirmDiscard && !asking) { setAsking(true); return; }
     if (dirty) onDraft(EMPTY_CREATE_DRAFT);
     onClose();
   };
+  const keepEditing = () => setAsking(false);
   // A restored female draft needs the matching model back on screen.
   useEffect(() => { if (draft.gender === 1) fetchNui("multichar:createPreview", { gender: 1 }); }, []);
   const closeRef = useRef(requestClose);
   closeRef.current = requestClose;
+  const askingRef = useRef(asking);
+  askingRef.current = asking;
+  const keepEditingRef = useRef(keepEditing);
+  keepEditingRef.current = keepEditing;
   useEffect(() => {
-    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") closeRef.current(); };
+    const onKey = (event: KeyboardEvent) => { if (event.key !== "Escape") return; if (askingRef.current) keepEditingRef.current(); else closeRef.current(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
@@ -405,7 +416,8 @@ function CreateDialog({ draft, onDraft, closeOnBackdrop, onClose, onBusy }: { dr
     <div className="field-grid"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} required value={draft.birthdate} onChange={(event) => setField("birthdate", event.target.value)} /></label><label>Nationality<input name="nationality" maxLength={32} required value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)} /></label></div>
     <div className="segmented" aria-label="Body model"><button type="button" className={draft.gender === 0 ? "active" : ""} onClick={() => { setField("gender", 0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male model</button><button type="button" className={draft.gender === 1 ? "active" : ""} onClick={() => { setField("gender", 1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female model</button></div>
     {error && <p className="form-error">{error}</p>}
-    <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>Cancel</button><button className="button primary"><UserPlus size={16} />Create identity</button></div>
+    {asking && <div className="discard-prompt" role="alertdialog" aria-label="Discard details"><p>Discard the identity details you entered?</p><div className="modal-actions"><button type="button" className="button ghost" onClick={keepEditing}>Keep editing</button><button type="button" className="button destructive" onClick={requestClose}>Discard</button></div></div>}
+    {!asking && <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>Cancel</button><button className="button primary"><UserPlus size={16} />Create identity</button></div>}
   </form></div>;
 }
 
