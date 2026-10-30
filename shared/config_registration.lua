@@ -17,4 +17,14 @@ Config.scenes = QB.config.map(Config.scenes, QB.config.object({}), {
     description = 'Maps each stable scene ID to its authored character position, camera path, environment, labels, and presentation settings. Job and gang scene selectors refer to these IDs; keep the selected default scene present and restart qbmultichar after editing scene definitions.',
     requiredKeys = { defaultScene },
 })
+Config.previewWatchdogMs = QB.config.number(Config.previewWatchdogMs, {
+    min = 0, live = true,
+    label = 'Preview watchdog (ms)',
+    description = 'How long a character-select preview may stay on the loading cover before the interface gives up, hides the cover and shows an error. Set to 0 to disable the watchdog. Applies the next time character select opens.',
+})
+Config.ui.closeCreateOnBackdrop = QB.config.boolean(Config.ui.closeCreateOnBackdrop, {
+    live = true,
+    label = 'Close Create Identity on outside click',
+    description = 'When enabled, clicking outside the Create Identity dialog closes it. When disabled, only the close button, Cancel or Escape closes it, so a stray click cannot discard typed details. Applies the next time character select opens.',
+})
 Config = QB.config.adopt(Config)

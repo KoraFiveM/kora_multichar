@@ -272,4 +272,105 @@ describe('spawn and studio', () => {
     fireEvent.click(screen.getByRole('button', { name: /place character/i }));
     expect(nui.fetch).toHaveBeenCalledWith('multichar:creator:action', { action: 'placeCharacter', payload: {} });
   });
+
+  it('does not softlock on the loading cover when a brand-new account browses its single slide', () => {
+    render(<App />);
+    message('multichar:show', { characters: [], maxCharacters: 1 });
+    act(() => vi.advanceTimersByTime(121));
+    message('multichar:previewReady', { scene: 'civilian', ok: true });
+    nui.fetch.mockClear();
+
+    for (const key of ['ArrowRight', 'ArrowLeft', 'd', 'a']) fireEvent.keyDown(window, { key });
+    expect(screen.queryByText('Setting your scene')).toBeNull();
+    act(() => vi.advanceTimersByTime(500));
+    expect(nui.fetch).not.toHaveBeenCalled();
+
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(screen.getByLabelText('First name')).toBeTruthy();
+  });
+
+  it('still browses between several characters', () => {
+    const bob = { ...jane, citizenid: 'BOB2', cid: 2 };
+    render(<App />);
+    message('multichar:show', { characters: [jane, bob], maxCharacters: 2 });
+    act(() => vi.advanceTimersByTime(121));
+    message('multichar:previewReady', { scene: 'civilian', ok: true });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(screen.getByText('Setting your scene')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(121));
+    expect(nui.fetch).toHaveBeenCalledWith('multichar:preview', { citizenid: 'BOB2' });
+  });
+
+  it('clears a preview that never resolves after the configured watchdog', () => {
+    render(<App />);
+    message('multichar:show', { characters: [jane], maxCharacters: 1, previewWatchdogMs: 5000 });
+    expect(screen.getByText('Setting your scene')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(4999));
+    expect(screen.getByText('Setting your scene')).toBeTruthy();
+    act(() => vi.advanceTimersByTime(2));
+    expect(screen.queryByText('Setting your scene')).toBeNull();
+    expect(screen.getByText('The scene preview took too long to load.')).toBeTruthy();
+  });
+
+  it('keeps the watchdog off when disabled', () => {
+    render(<App />);
+    message('multichar:show', { characters: [jane], maxCharacters: 1, previewWatchdogMs: 0 });
+    act(() => vi.advanceTimersByTime(60000));
+    expect(screen.getByText('Setting your scene')).toBeTruthy();
+  });
+
+  describe('create identity dialog', () => {
+    function openCreate(ui?: { closeCreateOnBackdrop: boolean }) {
+      render(<App />);
+      message('multichar:show', { characters: [], maxCharacters: 1, ui });
+      act(() => vi.advanceTimersByTime(121));
+      message('multichar:previewReady', { scene: 'civilian', ok: true });
+      fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Alex' } });
+    }
+
+    it('ignores backdrop clicks by default', () => {
+      openCreate();
+      fireEvent.click(document.querySelector('.modal-backdrop')!);
+      expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Alex');
+    });
+
+    it('closes on backdrop click when enabled and restores the typed values on reopen', () => {
+      openCreate({ closeCreateOnBackdrop: true });
+      fireEvent.click(document.querySelector('.modal-backdrop')!);
+      expect(screen.queryByLabelText('First name')).toBeNull();
+      // Closing restarts the carousel preview, which must finish before Create is enabled.
+      act(() => vi.advanceTimersByTime(121));
+      message('multichar:previewReady', { scene: 'civilian', ok: true });
+      fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+      expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Alex');
+    });
+
+    it('asks before X or Escape discards typed data', () => {
+      const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
+      openCreate();
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(confirm).toHaveBeenCalledTimes(2);
+      expect(screen.getByLabelText('First name')).toBeTruthy();
+
+      confirm.mockReturnValue(true);
+      fireEvent.keyDown(window, { key: 'Escape' });
+      expect(screen.queryByLabelText('First name')).toBeNull();
+      confirm.mockRestore();
+    });
+
+    it('closes without a prompt when the form is untouched', () => {
+      const confirm = vi.spyOn(window, 'confirm');
+      render(<App />);
+      message('multichar:show', { characters: [], maxCharacters: 1 });
+      act(() => vi.advanceTimersByTime(121));
+      message('multichar:previewReady', { scene: 'civilian', ok: true });
+      fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+      fireEvent.click(screen.getByRole('button', { name: 'Close' }));
+      expect(confirm).not.toHaveBeenCalled();
+      expect(screen.queryByLabelText('First name')).toBeNull();
+      confirm.mockRestore();
+    });
+  });
 });

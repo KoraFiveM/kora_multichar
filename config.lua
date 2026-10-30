@@ -58,6 +58,17 @@ Config.spawnFlight = {
 
 Config.defaultScene = 'civilian'
 
+-- If a character-select preview has not reported back after this long, the NUI
+-- drops its loading cover and shows an error instead of leaving the player
+-- stuck on it. 0 disables the watchdog.
+Config.previewWatchdogMs = 15000
+
+Config.ui = {
+    -- Clicking outside the Create Identity dialog closes it. Off by default so
+    -- a stray click cannot throw away a half-typed identity.
+    closeCreateOnBackdrop = false,
+}
+
 -- Custom static scenes may be added here. scenes.lua merges the six bundled
 -- defaults without overwriting an explicitly configured id.
 Config.scenes = {}

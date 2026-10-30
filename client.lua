@@ -228,7 +228,12 @@ local function refreshCharacters()
     ShutdownLoadingScreenNui()
     DoScreenFadeIn(400)
     SetNuiFocus(true, true)
-    send('multichar:show', { characters = characters, maxCharacters = maxCharacters })
+    send('multichar:show', {
+        characters = characters,
+        maxCharacters = maxCharacters,
+        previewWatchdogMs = Config.previewWatchdogMs,
+        ui = { closeCreateOnBackdrop = Config.ui.closeCreateOnBackdrop },
+    })
     -- Say it on screen rather than letting the player sit on "Loading scene..."
     -- forever while every preview quietly fails to resolve a scene.
     if next(sceneCatalog) == nil then
@@ -312,7 +317,13 @@ end)
 
 RegisterNUICallback('multichar:preview', function(data, cb)
     local citizenid = type(data) == 'table' and data.citizenid
-    if type(citizenid) == 'string' and charactersById[citizenid] then previewCharacter(citizenid) end
+    if type(citizenid) ~= 'string' or not charactersById[citizenid] then
+        -- Answer anyway so the NUI never waits on a preview that will not come.
+        send('multichar:previewReady', { ok = false, error = 'That character could not be previewed.' })
+        cb({ ok = true })
+        return
+    end
+    previewCharacter(citizenid)
     cb({ ok = true })
 end)
 

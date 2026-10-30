@@ -38,6 +38,11 @@ export function App() {
   const [deleting, setDeleting] = useState(false);
   const [busy, setBusy] = useState(false);
   const [previewing, setPreviewing] = useState(false);
+  // From the show payload; 0 disables the watchdog.
+  const [previewWatchdogMs, setPreviewWatchdogMs] = useState(0);
+  const [closeCreateOnBackdrop, setCloseCreateOnBackdrop] = useState(false);
+  // Kept here, not in the dialog, so closing and reopening restores typed values.
+  const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE_DRAFT);
   // What the spawn preview is currently waiting on, for the cover's subtitle.
   const [previewStage, setPreviewStage] = useState<string | null>(null);
   const [spawnTraveling, setSpawnTraveling] = useState(false);
@@ -69,7 +74,10 @@ export function App() {
     const listener = (event: MessageEvent<NuiMessage>) => {
       const { action, data } = event.data || {};
       if (action === "multichar:show") {
-        const payload = data as { characters?: unknown; maxCharacters?: number };
+        const payload = data as { characters?: unknown; maxCharacters?: number; previewWatchdogMs?: number; ui?: { closeCreateOnBackdrop?: boolean } };
+        setPreviewWatchdogMs(Math.max(0, Number(payload?.previewWatchdogMs) || 0));
+        setCloseCreateOnBackdrop(payload?.ui?.closeCreateOnBackdrop === true);
+        setCreateDraft(EMPTY_CREATE_DRAFT);
         setCharacters(normalizeCharacters(payload?.characters));
         setMaxCharacters(Number(payload?.maxCharacters) || 5);
         spawnCameraReady.current = false;
@@ -140,6 +148,16 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [stage, index, character?.citizenid, creating, deleting, slideCount]);
 
+  // Safety net: a preview that never reports back must not hold the cover forever.
+  useEffect(() => {
+    if (!previewing || stage !== "characters" || !previewWatchdogMs) return;
+    const timer = window.setTimeout(() => {
+      setPreviewing(false);
+      setToast("The scene preview took too long to load.");
+    }, previewWatchdogMs);
+    return () => window.clearTimeout(timer);
+  }, [previewing, stage, index, previewWatchdogMs]);
+
   useEffect(() => {
     if (stage !== "spawn" || !spawn) return;
     let active = true;
@@ -192,7 +210,11 @@ export function App() {
 
   const move = (delta: number) => {
     if (stage === "characters" && !creating && !deleting && slideCount) {
-      setPreviewing(true); setIndex((value) => wrapIndex(value, delta, slideCount)); setDetails(false);
+      // With a single slide there is nothing to preview; starting one would
+      // never be answered because the preview effect only runs on index change.
+      const next = wrapIndex(index, delta, slideCount);
+      if (next === index) return;
+      setPreviewing(true); setIndex(next); setDetails(false);
     } else if (stage === "spawn" && spawns.length && !busy) {
       setSpawnIndex((value) => wrapIndex(value, delta, spawns.length));
     }
@@ -244,7 +266,7 @@ export function App() {
         <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
       )}
       {previewing && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} />}
-      {creating && <CreateDialog onClose={() => setCreating(false)} onBusy={setBusy} />}
+      {creating && <CreateDialog draft={createDraft} onDraft={setCreateDraft} closeOnBackdrop={closeCreateOnBackdrop} onClose={() => setCreating(false)} onBusy={setBusy} />}
       {deleting && character && <DeleteDialog character={character} onClose={() => setDeleting(false)} onBusy={setBusy} />}
     </div>
   );
@@ -341,30 +363,49 @@ function Dossier({ character, onClose, onDelete }: { character: Character; onClo
   </aside>;
 }
 
-function CreateDialog({ onClose, onBusy }: { onClose: () => void; onBusy: (value: boolean) => void }) {
-  const [gender, setGender] = useState(0);
+type CreateDraft = { firstname: string; lastname: string; birthdate: string; nationality: string; gender: number };
+const EMPTY_CREATE_DRAFT: CreateDraft = { firstname: "", lastname: "", birthdate: "2000-01-01", nationality: "USA", gender: 0 };
+
+function CreateDialog({ draft, onDraft, closeOnBackdrop, onClose, onBusy }: { draft: CreateDraft; onDraft: (draft: CreateDraft) => void; closeOnBackdrop: boolean; onClose: () => void; onBusy: (value: boolean) => void }) {
   const [error, setError] = useState("");
+  const dirty = draft.firstname !== "" || draft.lastname !== "" || draft.birthdate !== EMPTY_CREATE_DRAFT.birthdate || draft.nationality !== EMPTY_CREATE_DRAFT.nationality;
+  const setField = (field: keyof CreateDraft, value: string | number) => onDraft({ ...draft, [field]: value });
+  // X, Cancel and Escape are deliberate, so they ask before discarding typed data.
+  const requestClose = () => {
+    if (dirty && !window.confirm("Discard the identity details you entered?")) return;
+    if (dirty) onDraft(EMPTY_CREATE_DRAFT);
+    onClose();
+  };
+  // A restored female draft needs the matching model back on screen.
+  useEffect(() => { if (draft.gender === 1) fetchNui("multichar:createPreview", { gender: 1 }); }, []);
+  const closeRef = useRef(requestClose);
+  closeRef.current = requestClose;
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") closeRef.current(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
   const submit = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
-    const form = new FormData(event.currentTarget);
-    const firstname = String(form.get("firstname") || "").trim();
-    const lastname = String(form.get("lastname") || "").trim();
-    const birthdate = String(form.get("birthdate") || "");
-    const nationality = String(form.get("nationality") || "").trim();
+    const firstname = draft.firstname.trim();
+    const lastname = draft.lastname.trim();
+    const birthdate = draft.birthdate;
+    const nationality = draft.nationality.trim();
+    const gender = draft.gender;
     if (!firstname || firstname.length > 24 || !lastname || lastname.length > 24) { setError("Names must be between 1 and 24 characters."); return; }
     if (!isValidBirthdate(birthdate)) { setError("Enter a real, non-future birth date."); return; }
     if (nationality.length < 2 || nationality.length > 32) { setError("Nationality must be between 2 and 32 characters."); return; }
-    onBusy(true); onClose();
+    onBusy(true); onDraft(EMPTY_CREATE_DRAFT); onClose();
     fetchNui("multichar:create", { firstname, lastname, birthdate, nationality, gender });
   };
-  return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><form className="modal panel create-modal" onSubmit={submit}>
-    <div className="modal-rail" /><div className="panel-heading"><div><span className="eyebrow">NEW IDENTITY</span><h3>Create character</h3></div><button type="button" className="icon-button" onClick={onClose}><X size={16} /></button></div>
+  return <div className="modal-layer"><div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined} /><form className="modal panel create-modal" onSubmit={submit}>
+    <div className="modal-rail" /><div className="panel-heading"><div><span className="eyebrow">NEW IDENTITY</span><h3>Create character</h3></div><button type="button" className="icon-button" aria-label="Close" onClick={requestClose}><X size={16} /></button></div>
     <p className="modal-copy">Build the identity. You will customize appearance immediately after spawning.</p>
-    <div className="field-grid"><label>First name<input name="firstname" autoFocus maxLength={24} required /></label><label>Last name<input name="lastname" maxLength={24} required /></label></div>
-    <div className="field-grid"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} defaultValue="2000-01-01" required /></label><label>Nationality<input name="nationality" defaultValue="USA" maxLength={32} required /></label></div>
-    <div className="segmented" aria-label="Body model"><button type="button" className={gender === 0 ? "active" : ""} onClick={() => { setGender(0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male model</button><button type="button" className={gender === 1 ? "active" : ""} onClick={() => { setGender(1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female model</button></div>
+    <div className="field-grid"><label>First name<input name="firstname" autoFocus maxLength={24} required value={draft.firstname} onChange={(event) => setField("firstname", event.target.value)} /></label><label>Last name<input name="lastname" maxLength={24} required value={draft.lastname} onChange={(event) => setField("lastname", event.target.value)} /></label></div>
+    <div className="field-grid"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} required value={draft.birthdate} onChange={(event) => setField("birthdate", event.target.value)} /></label><label>Nationality<input name="nationality" maxLength={32} required value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)} /></label></div>
+    <div className="segmented" aria-label="Body model"><button type="button" className={draft.gender === 0 ? "active" : ""} onClick={() => { setField("gender", 0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male model</button><button type="button" className={draft.gender === 1 ? "active" : ""} onClick={() => { setField("gender", 1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female model</button></div>
     {error && <p className="form-error">{error}</p>}
-    <div className="modal-actions"><button type="button" className="button ghost" onClick={onClose}>Cancel</button><button className="button primary"><UserPlus size={16} />Create identity</button></div>
+    <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>Cancel</button><button className="button primary"><UserPlus size={16} />Create identity</button></div>
   </form></div>;
 }
 
