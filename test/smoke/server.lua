@@ -138,7 +138,7 @@ H.test('runtime scene ownership prevents cross-resource removal and stop sweeps 
     H.equal(clientEvents[#clientEvents].name, 'qbmultichar:client:sceneRemove', 'removal is broadcast')
 end)
 
-H.test('staff commands are gated through qblib permission levels, not a local rank table', function()
+H.test('staff commands are gated through kora_lib permission levels, not a local rank table', function()
     heldLevel[7] = 'user'
     H.falsy(runCommand(Config.logout.command, 7), 'a plain user cannot log out staff-style')
     heldLevel[7] = 'mod'

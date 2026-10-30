@@ -14,7 +14,7 @@ shows each real destination.
 
 ## Requirements
 
-- [qblib](https://qbcore2.github.io/kora_lib/)
+- [kora_lib](https://qbcore2.github.io/kora_lib/)
 - [qbcore](https://qbcore2.github.io/kora_core/)
 - [qbclothing](https://qbcore2.github.io/kora_clothing/) — optional, but the
   supported saved-clothing and tattoo provider

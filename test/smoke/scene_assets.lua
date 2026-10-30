@@ -7,7 +7,7 @@ local root = arg[1] or scriptDir .. '../../'
 local support = arg[2] or root
 if root:sub(-1) ~= '/' then root = root .. '/' end
 if support:sub(-1) ~= '/' then support = support .. '/' end
-local qblib = support .. '../kora_lib/'
+local kora_lib = support .. '../kora_lib/'
 package.path = support .. 'test/?.lua;' .. package.path
 local H = require('harness')
 local scenePath = arg[3] or root .. 'scene.lua'
@@ -79,9 +79,9 @@ local function fresh()
         'ClearTimecycleModifier', 'DoScreenFadeIn', 'DoScreenFadeOut', 'UseParticleFxAssetNextCall', 'SetEntityHeading',
         'SetCamUseShallowDofMode', 'SetCamNearDof', 'SetCamFarDof', 'SetCamDofStrength', 'NetworkOverrideClockTime',
         'SetWeatherTypeNow', 'SetWeatherTypeNowPersist', 'SetTimecycleModifier', 'SetTimecycleModifierStrength' }) do _G[name] = noop end
-    dofile(qblib .. 'modules/util/shared.lua')
-    dofile(qblib .. 'modules/loops/shared.lua')
-    dofile(qblib .. 'modules/stream/client.lua')
+    dofile(kora_lib .. 'modules/util/shared.lua')
+    dofile(kora_lib .. 'modules/loops/shared.lua')
+    dofile(kora_lib .. 'modules/stream/client.lua')
     dofile(root .. 'config.lua')
     Config.sceneLimits.streamTimeoutMs = 10
     dofile(root .. 'shared/scene.lua')
@@ -110,7 +110,7 @@ H.test('shared names and successful FX release after consumer cleanup', function
     fresh()
     show('shared_idle', { { id = 'actor', type = 'ped', model = 'fixture_actor', offset = vector4(1, 0, 0, 0),
         animation = { dict = 'shared_idle', name = 'fixture_anim' } } })
-    eq(count('request-anim', 'shared_idle'), 1, 'actual qblib loader requests a shared scene dictionary once')
+    eq(count('request-anim', 'shared_idle'), 1, 'actual kora_lib loader requests a shared scene dictionary once')
     eq(count('play-anim', 'shared_idle'), 2, 'both owned scene peds consume the shared dictionary')
     SceneRuntime.playCue({ type = 'animation', target = 'character', dict = 'timeline_anim', name = 'fixture_anim' })
     eq(count('request-anim', 'timeline_anim'), 1, 'timeline cue acquires a second dictionary')
@@ -149,16 +149,16 @@ H.test('invalid animation has no request ownership', function()
     eq(count('remove-anim', 'invalid_dict'), 0, 'invalid dictionary has no owned request to release')
 end)
 
-H.test('animation timeout is already released by qblib', function()
+H.test('animation timeout is already released by kora_lib', function()
     fresh(); world.heldAnim.timeout_dict = true
     thread = coroutine.create(function() show('timeout_dict') end); finish(thread)
     eq(count('request-anim', 'timeout_dict'), 1, 'animation timeout had one actual request')
-    eq(count('remove-anim', 'timeout_dict'), 1, 'actual qblib helper already releases a timed-out dictionary')
+    eq(count('remove-anim', 'timeout_dict'), 1, 'actual kora_lib helper already releases a timed-out dictionary')
     SceneRuntime.cleanupScene()
     eq(count('remove-anim', 'timeout_dict'), 1, 'scene must not duplicate helper timeout release')
 end)
 
-H.test('particle timeout is released by qblib', function()
+H.test('particle timeout is released by kora_lib', function()
     fresh(); show(); world.heldPtfx.timeout_fx = true
     thread = coroutine.create(function() SceneRuntime.playCue({ type = 'particle', asset = 'timeout_fx', effect = 'fixture_fx' }) end); finish(thread)
     eq(count('request-ptfx', 'timeout_fx'), 1, 'particle timeout requests named asset')

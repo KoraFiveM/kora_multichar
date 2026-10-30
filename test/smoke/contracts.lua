@@ -62,10 +62,10 @@ H.test('preview entities stay local and cleanup covers cinematic state', functio
 end)
 
 H.test('staff logout is permission-gated and travels on the replicated login state', function()
-    H.truthy(server:find('QB.permissions.hasLevel', 1, true), 'staff gating must go through qblib, not a local rank table')
+    H.truthy(server:find('QB.permissions.hasLevel', 1, true), 'staff gating must go through kora_lib, not a local rank table')
     H.falsy(server:find('exports.kora_core:getPermission', 1, true),
         "the hand-rolled rank table over qbcore's getPermission is gone")
-    H.falsy(server:find('local ranks = {', 1, true), 'rank ordering belongs to qblib')
+    H.falsy(server:find('local ranks = {', 1, true), 'rank ordering belongs to kora_lib')
     H.truthy(server:find('Config.logout.minimumPermission', 1, true), 'the logout level must stay configurable')
     H.truthy(server:find('exports.kora_core:logout(src)', 1, true), 'the character drop belongs to qbcore')
     H.falsy(server:find("TriggerClientEvent('qb-multicharacter:client:chooseChar'", 1, true),
@@ -73,7 +73,7 @@ H.test('staff logout is permission-gated and travels on the replicated login sta
     H.truthy(client:find("AddStateBagChangeHandler('qbcore:loggedIn'", 1, true),
         'the client returns to selection by following the replicated login state')
     H.truthy(client:find('while not serverId or serverId == -1 do', 1, true),
-        'the login-state bag must wait for qblib to resolve its stable server id')
+        'the login-state bag must wait for kora_lib to resolve its stable server id')
     H.truthy(client:find('if returningToSelection or currentMode ~= nil then return end', 1, true),
         'the return must not re-enter selection or fight an active cinematic mode')
 end)
@@ -115,8 +115,8 @@ H.test('scene studio exports through clipboard without writing server files', fu
     H.truthy(creator:find('definition.id = nil', 1, true), 'only the registry-level id should be omitted')
     H.truthy(creator:find("id = 'close'", 1, true) and creator:find("id = 'focal'", 1, true) and creator:find("id = 'establishing'", 1, true), 'new studio scenes should use the complete camera arc')
     H.falsy(creator:find('io.open', 1, true), 'studio must not write files')
-    H.truthy(creator:find('QB.freecam.start({', 1, true), 'the studio should use qblib freecam')
-    H.truthy(creator:find('QB.instructional.show({', 1, true), 'the studio should use qblib instructional buttons')
+    H.truthy(creator:find('QB.freecam.start({', 1, true), 'the studio should use kora_lib freecam')
+    H.truthy(creator:find('QB.instructional.show({', 1, true), 'the studio should use kora_lib instructional buttons')
 end)
 
 H.report('contracts')
