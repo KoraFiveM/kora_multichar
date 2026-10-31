@@ -1,3 +1,10 @@
+:root { --edge-inset: 20px; }
+/* UI text is not selectable anywhere: a click-drag across the character list
+   would otherwise highlight labels and icons on top of the scene. Form fields
+   stay selectable and editable. */
+html, body, #root, #root * { -webkit-user-select: none; user-select: none; }
+#root input, #root textarea, #root [contenteditable=""], #root [contenteditable="true"], #root [contenteditable=""] *, #root [contenteditable="true"] * { -webkit-user-select: text; user-select: text; }
+img, svg { -webkit-user-drag: none; user-drag: none; }
 html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; background: transparent !important; }
 /* The root entrypoint owns resolution scaling. Keeping a second fixed zoom
    here multiplied that scale and made multichar substantially larger than
@@ -17,7 +24,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .topbar h1 { margin: 3px 0 0; font-size: 25px; line-height: 1; letter-spacing: -.025em; text-shadow: 0 2px 18px rgb(0 0 0 / .8); }
 .eyebrow { color: hsl(var(--primary)); font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
 .panel { border: 1px solid hsl(var(--border) / .86); border-radius: var(--radius); background: hsl(var(--card) / .94); box-shadow: 0 18px 48px rgb(0 0 0 / .48), inset 0 1px hsl(0 0% 100% / .035); }
-.icon-button { display: grid; width: 36px; height: 36px; place-items: center; border: 1px solid hsl(var(--border)); border-radius: 9px; background: hsl(var(--card) / .9); color: hsl(var(--muted-foreground)); cursor: pointer; }
+.icon-button { display: grid; flex: none; width: 36px; height: 36px; place-items: center; border: 1px solid hsl(var(--border)); border-radius: 9px; background: hsl(var(--card) / .9); color: hsl(var(--muted-foreground)); cursor: pointer; }
 .icon-button:hover { border-color: hsl(var(--brand-border)); color: hsl(var(--foreground)); background: hsl(var(--surface-hover)); }
 .scene-label { position: absolute; z-index: 1; top: 31px; left: 50%; display: flex; align-items: center; gap: 7px; transform: translateX(-50%); border: 1px solid hsl(var(--border) / .75); border-radius: 999px; padding: 6px 11px; background: hsl(var(--card) / .75); color: hsl(var(--muted-foreground)); font-size: 10px; font-weight: 700; letter-spacing: .06em; text-transform: uppercase; }
 .carousel-shell { position: absolute; z-index: 2; left: 50%; bottom: 52px; display: flex; align-items: center; gap: 0; transform: translateX(-50%); }
@@ -102,10 +109,10 @@ textarea { resize: vertical; }
 /* Scene studio */
 .creator-shell { position: absolute; z-index: 30; inset: 0; pointer-events: none; }
 .creator-shell::before { content: ""; position: absolute; inset: 0; background: linear-gradient(90deg, rgb(0 0 0 / .5), transparent 34%, transparent 66%, rgb(0 0 0 / .5)); }
-.creator-top { position: absolute; top: 14px; left: 14px; right: 14px; height: 62px; display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
+.creator-top { position: absolute; top: var(--edge-inset); left: var(--edge-inset); right: var(--edge-inset); height: 62px; display: flex; align-items: center; gap: 8px; padding: 9px 12px; }
 .creator-top > div:first-child { margin-right: auto; }.creator-top h2 { margin: 2px 0 0; font-size: 17px; }.creator-top select { width: 230px; margin: 0; }
-.creator-left, .creator-right { position: absolute; top: 88px; bottom: 192px; width: 284px; overflow: auto; padding: 11px; }
-.creator-left { left: 14px; }.creator-right { right: 14px; }
+.creator-left, .creator-right { position: absolute; top: 94px; bottom: 192px; width: 284px; overflow: auto; padding: 11px; }
+.creator-left { left: var(--edge-inset); }.creator-right { right: var(--edge-inset); }
 .creator-section + .creator-section { margin-top: 14px; padding-top: 13px; border-top: 1px solid hsl(var(--border)); }
 .creator-section h3 { display: flex; align-items: center; gap: 7px; margin: 0 0 9px; color: hsl(var(--foreground)); font-size: 11px; letter-spacing: .06em; text-transform: uppercase; }.creator-section h3 svg { color: hsl(var(--primary)); }
 .creator-section label { margin-bottom: 7px; }.creator-section input, .creator-section select, .creator-section textarea { padding: 6px 7px; font-size: 10px; }
@@ -127,7 +134,7 @@ textarea { resize: vertical; }
 .scrubber { height: 5px; margin: 8px 0 5px; padding: 0; accent-color: hsl(var(--primary)); }.cue-list { display: flex; gap: 4px; overflow: auto; }.cue-editor { flex: none; }.cue { display: flex; align-items: center; gap: 5px; border: 1px solid hsl(var(--border)); border-radius: 5px; padding: 3px 5px; background: hsl(var(--surface-raised)); font-size: 8px; white-space: nowrap; }.cue b { color: hsl(var(--primary)); }.cue button { border: 0; background: transparent; color: hsl(var(--muted-foreground)); padding: 0; cursor: pointer; }
 .cue-editor > .json-editor { border: 0; padding: 2px 3px; background: transparent; }.cue-editor > .json-editor[open] { position: fixed; z-index: 40; left: 50%; bottom: 190px; width: 360px; transform: translateX(-50%); border: 1px solid hsl(var(--brand-border)); border-radius: 8px; padding: 9px; background: hsl(var(--popover)); box-shadow: 0 18px 50px rgb(0 0 0 / .58); }
 .cue-add { position: absolute; left: 11px; right: 11px; bottom: -38px; display: flex; gap: 5px; }.cue-add input { height: 30px; padding: 5px 7px; font-family: ui-monospace, monospace; font-size: 9px; }.cue-add .mini-button { flex: none; }
-.creator-actions { position: absolute; z-index: 3; right: 14px; bottom: 14px; display: flex; gap: 7px; padding: 8px; }.export-toast { position: absolute; right: 0; bottom: 54px; border: 1px solid hsl(var(--brand-border)); border-radius: 7px; padding: 7px 10px; background: hsl(var(--popover)); color: hsl(var(--foreground)); font-size: 10px; }
+.creator-actions { position: absolute; z-index: 3; right: var(--edge-inset); bottom: var(--edge-inset); display: flex; gap: 7px; padding: 8px; }.export-toast { position: absolute; right: 0; bottom: 54px; border: 1px solid hsl(var(--brand-border)); border-radius: 7px; padding: 7px 10px; background: hsl(var(--popover)); color: hsl(var(--foreground)); font-size: 10px; }
 
 @keyframes reveal { from { opacity: 0; } }
 @keyframes modal-in { from { opacity: 0; transform: translateY(8px) scale(.98); } }
