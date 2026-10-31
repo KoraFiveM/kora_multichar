@@ -4,7 +4,7 @@
 
 local scenes = {}
 local sceneOwners = {}
-local sessions = {} -- [src] = { previousBucket, mode }
+local sessions = {} -- [src] = { previousBucket, mode, isolated }
 
 local function setBucket(src, bucket)
     local ok = pcall(function() exports.kora_core:setPlayerBucket(src, bucket) end)
@@ -33,15 +33,33 @@ local function bucketFor(src, mode)
     return base + src
 end
 
+-- Personal buckets (base + src) are never shared, so population can be switched
+-- off per bucket without affecting anyone else. It is written on every entry
+-- (true or false, from config) rather than once and then forgotten: slot numbers
+-- are reused, so a stale disabled bucket must follow the current setting. There
+-- is deliberately no restore on leave -- nobody is in the bucket afterwards, and
+-- the next entry rewrites it. Entity lockdown is left untouched: the preview
+-- scene's peds and vehicles are created client-side, so a strict lockdown would
+-- only risk blocking them, and population is the thing being removed.
+local function isolate(src, mode)
+    local bucket = bucketFor(src, mode)
+    setBucket(src, bucket)
+    pcall(SetRoutingBucketPopulationEnabled, bucket, Config.buckets.disablePopulation == false)
+end
+
 local function enterMode(src, mode)
     if mode ~= 'selection' and mode ~= 'spawn' and mode ~= 'creator' then return false, 'invalid cinematic mode' end
     local session = sessions[src]
     if not session then
-        session = { previousBucket = GetPlayerRoutingBucket(src), mode = mode }
+        -- Config.buckets.enabled = false never touches the player's bucket, so
+        -- there is nothing to restore either (a restore could clobber a bucket
+        -- another resource assigned in the meantime).
+        local isolated = Config.buckets.enabled ~= false
+        session = { previousBucket = isolated and GetPlayerRoutingBucket(src) or nil, mode = mode, isolated = isolated }
         sessions[src] = session
-        setBucket(src, bucketFor(src, mode))
-    elseif mode == 'creator' and session.mode ~= 'creator' then
-        setBucket(src, bucketFor(src, mode))
+        if isolated then isolate(src, mode) end
+    elseif mode == 'creator' and session.mode ~= 'creator' and session.isolated then
+        isolate(src, mode)
     end
     session.mode = mode
     writeMode(src, mode)
@@ -54,7 +72,7 @@ local function leaveMode(src)
         writeMode(src, nil)
         return true
     end
-    setBucket(src, session.previousBucket or 0)
+    if session.isolated then setBucket(src, session.previousBucket or 0) end
     sessions[src] = nil
     writeMode(src, nil)
     return true

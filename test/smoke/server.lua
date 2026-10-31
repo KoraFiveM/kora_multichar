@@ -16,6 +16,8 @@ _G.GetCurrentResourceName = function() return 'kora_multichar' end
 _G.GetInvokingResource = function() return invokingResource end
 _G.GetPlayerRoutingBucket = function(src) return buckets[src] or 0 end
 _G.SetPlayerRoutingBucket = function(src, bucket) buckets[src] = bucket end
+local populationCalls = {}
+_G.SetRoutingBucketPopulationEnabled = function(bucket, enabled) populationCalls[#populationCalls + 1] = { bucket = bucket, enabled = enabled } end
 _G.Player = function(src)
     states[src] = states[src] or {}
     states[src].set = function(_, key, value) states[src][key] = value end
@@ -202,6 +204,75 @@ H.test('bucket notification covers the core and disabled-compat fallback exactly
         H.equal(bucketNotices[1].bucket, 42, 'restore notifies after native')
     end
     exportTable.kora_core.setPlayerBucket = compatSetter
+end)
+
+H.test('isolation buckets have population disabled, selection and creator alike', function()
+    populationCalls = {}
+    states[7]['qbcore:loggedIn'] = false
+    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+    H.equal(#populationCalls, 1, 'population is set once on entry')
+    H.equal(populationCalls[1].bucket, Config.buckets.selectionBase + 7, 'selection bucket')
+    H.equal(populationCalls[1].enabled, false, 'population disabled in the selection bucket')
+    H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
+
+    states[7]['qbcore:loggedIn'] = true
+    populationCalls = {}
+    heldLevel[7] = 'admin'
+    H.truthy(runCommand(Config.creator.command, 7), 'studio opens')
+    H.equal(populationCalls[1].bucket, Config.buckets.creatorBase + 7, 'creator bucket')
+    H.equal(populationCalls[1].enabled, false, 'population disabled in the creator bucket')
+    callbacks['qbmultichar:server:leaveMode'](7)
+    H.equal(buckets[7], 42, 'studio restores the previous bucket')
+end)
+
+H.test('selection to spawn keeps one bucket and restore happens once at spawn', function()
+    states[7]['qbcore:loggedIn'] = false
+    populationCalls = {}
+    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+    states[7]['qbcore:loggedIn'] = true
+    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'spawn'))
+    H.equal(buckets[7], Config.buckets.selectionBase + 7, 'spawn carousel stays isolated')
+    H.equal(#populationCalls, 1, 'spawn does not re-isolate')
+    H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
+    H.equal(buckets[7], 42, 'previous bucket restored when the player spawns into the world')
+    H.equal(states[7]['qbmultichar:mode'], false, 'mode cleared')
+end)
+
+H.test('disablePopulation = false re-enables population on the bucket', function()
+    Config.buckets.disablePopulation = false
+    states[7]['qbcore:loggedIn'] = false
+    populationCalls = {}
+    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+    H.equal(populationCalls[1].enabled, true, 'a stale disabled bucket follows the current setting')
+    H.equal(buckets[7], Config.buckets.selectionBase + 7, 'still isolated')
+    callbacks['qbmultichar:server:leaveMode'](7)
+    Config.buckets.disablePopulation = true
+end)
+
+H.test('enabled = false never moves the player or touches population', function()
+    Config.buckets.enabled = false
+    states[7]['qbcore:loggedIn'] = false
+    populationCalls = {}
+    bucketNotices = {}
+    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'), 'the session itself still works')
+    H.equal(buckets[7], 42, 'bucket untouched on entry')
+    H.equal(states[7]['qbmultichar:mode'], 'selection', 'mode state still published')
+    states[7]['qbcore:loggedIn'] = true
+    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'spawn'))
+    buckets[7] = 99 -- another resource moved the player meanwhile
+    H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
+    H.equal(buckets[7], 99, 'leave does not restore a bucket it never changed')
+    H.equal(#populationCalls, 0, 'no population writes')
+    H.equal(#bucketNotices, 0, 'no bucket notifications')
+    Config.buckets.enabled = true
+    buckets[7] = 42
+end)
+
+H.test('cleanup on resource stop restores isolated players', function()
+    states[7]['qbcore:loggedIn'] = false
+    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+    for _, handler in ipairs(handlers['onResourceStop']) do handler('kora_multichar') end
+    H.equal(buckets[7], 42, 'resource stop restores the previous bucket')
 end)
 
 H.report('server')

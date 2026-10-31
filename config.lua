@@ -9,7 +9,19 @@
 
 Config = {}
 
+-- Character select, the spawn carousel and the scene studio each isolate the
+-- player in a personal routing bucket (base + server id) and restore the
+-- previous bucket when the session ends (spawn into the world / studio closed).
+-- kora_clothing's first-character fitting room is NOT part of this session: it
+-- runs after the spawn, in its own bucket (Config.bucket.base + source).
+--   enabled           : master switch. false = never change the player's bucket.
+--   disablePopulation : turn ambient peds/vehicles off inside those personal
+--                       buckets, so traffic and jet skis do not wander through
+--                       the background of the preview. Only the personal bucket
+--                       is affected; the normal world keeps its population.
 Config.buckets = {
+    enabled = true,
+    disablePopulation = true,
     selectionBase = 1100000,
     creatorBase = 1200000,
 }

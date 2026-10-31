@@ -41,4 +41,14 @@ Config.ui.confirmDiscardOnClose = QB.config.boolean(Config.ui.confirmDiscardOnCl
     label = 'Confirm before discarding Create Identity details',
     description = 'When enabled, closing the Create Identity dialog with the close button, Cancel or Escape after typing asks "Discard?" inside the dialog first. When disabled it closes immediately and the typed details are cleared. Applies the next time character select opens.',
 })
+Config.buckets.enabled = QB.config.boolean(Config.buckets.enabled, {
+    live = true,
+    label = 'Isolate character select in a personal routing bucket',
+    description = 'When enabled, character select, spawn selection and the scene studio move the player into a private routing bucket and return them to their previous bucket afterwards. When disabled the player stays in whatever bucket they were in and is never moved. Applies the next time a session starts.',
+})
+Config.buckets.disablePopulation = QB.config.boolean(Config.buckets.disablePopulation, {
+    live = true,
+    label = 'Disable ambient population in the character-select bucket',
+    description = 'When enabled, ambient peds and vehicles (traffic, jet skis, pedestrians) are switched off inside the private character-select bucket so they do not wander through the preview scene. Only that personal bucket is affected, never the normal world. Has no effect when bucket isolation is disabled. Applies the next time a session starts.',
+})
 Config = QB.config.adopt(Config)
