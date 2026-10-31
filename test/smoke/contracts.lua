@@ -62,7 +62,7 @@ H.test('preview entities stay local and cleanup covers cinematic state', functio
 end)
 
 H.test('staff logout is permission-gated and travels on the replicated login state', function()
-    H.truthy(server:find('QB.permissions.hasLevel', 1, true), 'staff gating must go through kora_lib, not a local rank table')
+    H.truthy(server:find('Kora.permissions.hasLevel', 1, true), 'staff gating must go through kora_lib, not a local rank table')
     H.falsy(server:find('exports.kora_core:getPermission', 1, true),
         "the hand-rolled rank table over qbcore's getPermission is gone")
     H.falsy(server:find('local ranks = {', 1, true), 'rank ordering belongs to kora_lib')
@@ -111,12 +111,12 @@ H.test('spawn completion is announced as an event, after the fade-in', function(
 end)
 
 H.test('scene studio exports through clipboard without writing server files', function()
-    H.truthy(creator:find('QB.nui.copyToClipboard(text)', 1, true), 'studio should copy generated Lua')
+    H.truthy(creator:find('Kora.nui.copyToClipboard(text)', 1, true), 'studio should copy generated Lua')
     H.truthy(creator:find('definition.id = nil', 1, true), 'only the registry-level id should be omitted')
     H.truthy(creator:find("id = 'close'", 1, true) and creator:find("id = 'focal'", 1, true) and creator:find("id = 'establishing'", 1, true), 'new studio scenes should use the complete camera arc')
     H.falsy(creator:find('io.open', 1, true), 'studio must not write files')
-    H.truthy(creator:find('QB.freecam.start({', 1, true), 'the studio should use kora_lib freecam')
-    H.truthy(creator:find('QB.instructional.show({', 1, true), 'the studio should use kora_lib instructional buttons')
+    H.truthy(creator:find('Kora.freecam.start({', 1, true), 'the studio should use kora_lib freecam')
+    H.truthy(creator:find('Kora.instructional.show({', 1, true), 'the studio should use kora_lib instructional buttons')
 end)
 
 H.report('contracts')

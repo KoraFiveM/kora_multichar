@@ -17,7 +17,7 @@ local function host(withClient)
     e.vector3, e.vector4 = vector, vector
     e.Config={ui={closeCreateOnBackdrop=false,confirmDiscardOnClose=true},previewWatchdogMs=0,defaultScene='default',defaultSpawn=vector(25,0,0,0),sceneLimits={streamTimeoutMs=1,worldStreamTimeoutMs=1},
         spawnFlight={liftDurationMs=0,minTravelDurationMs=0,maxTravelDurationMs=0,descentDurationMs=0}}
-    e.QB={util={isFiniteNumber=function(v) return type(v)=='number' and v==v and math.abs(v)<math.huge end},
+    e.Kora={util={isFiniteNumber=function(v) return type(v)=='number' and v==v and math.abs(v)<math.huge end},
         stream={loadModel=function(model) return not q.failModels[model] and model or nil end},callback={},cache={}}
     e.exports={kora_core={claimUI=noop}}
     e.PlayerPedId=function() return 1 end
@@ -87,7 +87,7 @@ local function host(withClient)
         q.catalog.preferred.selectors={{job='police'}}; q.catalog.preferred.priority=1
         q.characters={{citizenid='A',cid=1,charinfo={gender=0},job={name='police'}},
             {citizenid='B',cid=2,charinfo={gender=1},job={name='police'}}}
-        e.QB.callback.trigger=function(name, citizenid)
+        e.Kora.callback.trigger=function(name, citizenid)
             if name=='qbmultichar:server:enterMode' then
                 if q.pauseEnter then q.pauseEnter=false; coroutine.yield('enter') end; return true
             end

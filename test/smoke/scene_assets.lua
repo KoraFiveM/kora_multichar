@@ -27,7 +27,7 @@ local function record(kind, key) world.calls[#world.calls + 1] = { kind = kind, 
 local function fresh()
     world = { entities = { [1] = true }, nextEntity = 1, nextCam = 100, cameras = {}, nextFx = 200, fx = {},
         anim = {}, ptfx = {}, heldAnim = {}, heldPtfx = {}, calls = {}, handlers = {}, threads = {}, timer = 0 }
-    QB = { stream = {}, util = {}, loops = {}, compat = { isCallable = function(v) return type(v) == 'function' end } }
+    Kora = { stream = {}, util = {}, loops = {}, compat = { isCallable = function(v) return type(v) == 'function' end } }
     vector3 = function(x, y, z) return { x = x, y = y, z = z } end
     vector4 = function(x, y, z, w) return { x = x, y = y, z = z, w = w } end
     joaat = function(name) local hash = 1000; for index = 1, #name do hash = hash + name:byte(index) end; return hash end

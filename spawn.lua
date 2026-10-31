@@ -66,7 +66,7 @@ end
 
 RegisterNetEvent('qb-spawn:client:setupSpawns', function(cData, new, _apps)
     if new then return end
-    local houses = QB.callback.trigger('qb-spawn:server:getOwnedHouses', cData and cData.citizenid) or {}
+    local houses = Kora.callback.trigger('qb-spawn:server:getOwnedHouses', cData and cData.citizenid) or {}
     buildLocations(cData, houses, false)
     send('multichar:spawn:locations', {
         locations = spawnLocations, isNew = false,
@@ -75,7 +75,7 @@ RegisterNetEvent('qb-spawn:client:setupSpawns', function(cData, new, _apps)
 end)
 
 local function openSpawnSelection(isNew)
-    local entered, err = QB.callback.trigger('qbmultichar:server:enterMode', 'spawn')
+    local entered, err = Kora.callback.trigger('qbmultichar:server:enterMode', 'spawn')
     if not entered then
         send('multichar:error', err or 'Could not open spawn selection.')
         return

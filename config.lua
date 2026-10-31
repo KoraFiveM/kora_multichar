@@ -1,7 +1,7 @@
 -- Own config, self-contained -- matches real qb-spawn's convention of owning
 -- its data rather than reading kora_core's shared registries. Named `Config.*`,
--- not `QB.Spawns` (real qb-spawn's global) -- `kora_lib`'s `@kora_lib/init.lua`
--- already owns the global `QB` as a live cross-resource proxy in this
+-- not `Kora.Spawns` (real qb-spawn's global) -- `kora_lib`'s `@kora_lib/init.lua`
+-- already owns the global `Kora` as a live cross-resource proxy in this
 -- codebase, so reusing that name here would shadow it. This has zero
 -- backward-compat impact: Lua globals never cross resource VMs, so a third
 -- party can only ever observe this resource through net events/callbacks,

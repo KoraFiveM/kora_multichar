@@ -34,7 +34,7 @@ end
 local function loadModel(model)
     local hash = type(model) == 'number' and model or joaat(model)
     if not IsModelValid(hash) then return nil end
-    local loaded = QB.stream.loadModel(hash, nil, {
+    local loaded = Kora.stream.loadModel(hash, nil, {
         timeout = Config.sceneLimits.streamTimeoutMs,
     })
     return loaded or nil
@@ -76,7 +76,7 @@ end
 
 local function loadAnim(dict)
     if type(dict) ~= 'string' or dict == '' then return false end
-    return loadSceneAsset('animAssets', dict, QB.stream.loadAnimDict, HasAnimDictLoaded, RemoveAnimDict)
+    return loadSceneAsset('animAssets', dict, Kora.stream.loadAnimDict, HasAnimDictLoaded, RemoveAnimDict)
 end
 
 local function localWorld(scene, offset)
@@ -509,7 +509,7 @@ end
 local function playParticle(cue)
     if type(cue.asset) ~= 'string' or type(cue.effect) ~= 'string' then return end
     local generation = state.timelineGeneration
-    if not loadSceneAsset('ptfxAssets', cue.asset, QB.stream.loadPtfx,
+    if not loadSceneAsset('ptfxAssets', cue.asset, Kora.stream.loadPtfx,
         HasNamedPtfxAssetLoaded, RemoveNamedPtfxAsset) then return end
     if generation ~= state.timelineGeneration then return end
     UseParticleFxAssetNextCall(cue.asset)

@@ -49,11 +49,11 @@ local exportTable = {
 _G.exports = setmetatable(exportTable, { __call = function(_, name, callback) exported[name] = callback end })
 
 -- Held staff level per source, resolved through a faithful copy of
--- QB.permissions.hasLevel's cascade (levels ordered most-privileged first).
+-- Kora.permissions.hasLevel's cascade (levels ordered most-privileged first).
 local heldLevel, permissionCalls = {}, {}
 local commandDefs, notifications = {}, {}
 
-_G.QB = {
+_G.Kora = {
     util = { isFiniteNumber = function(value)
         return type(value) == 'number' and value == value and value > -math.huge and value < math.huge
     end },

@@ -71,7 +71,7 @@ local function fetchSceneCatalog(attempts)
     -- server registers the bundled scenes at script load, so zero scenes on the
     -- wire means the round trip failed, not that this server has none.
     return bootCall('scene catalog fetch', function()
-        local fetched = QB.callback.trigger('qbmultichar:server:getScenes')
+        local fetched = Kora.callback.trigger('qbmultichar:server:getScenes')
         if type(fetched) ~= 'table' or next(fetched) == nil then return nil end
         return fetched
     end, attempts)
@@ -94,7 +94,7 @@ local function previewCharacter(citizenid)
     send('multichar:previewLoading', { citizenid = citizenid })
 
     CreateThread(function()
-        local model, skin = QB.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
+        local model, skin = Kora.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
         if generation ~= previewGeneration then return end
         if type(model) ~= 'string' then model, skin = fallbackModel(character), {} end
         -- A catalog that arrived empty (a boot fetch that never answered) makes
@@ -126,7 +126,7 @@ local function previewCharacter(citizenid)
 end
 
 local function leaveServerMode()
-    return QB.callback.trigger('qbmultichar:server:leaveMode') == true
+    return Kora.callback.trigger('qbmultichar:server:leaveMode') == true
 end
 
 local function closeNuiOnly()
@@ -199,7 +199,7 @@ local function refreshCharacters()
     previewGeneration = previewGeneration + 1
     local entered, enterErr
     for tries = 1, BOOT_MAX_ATTEMPTS do
-        entered, enterErr = QB.callback.trigger('qbmultichar:server:enterMode', 'selection')
+        entered, enterErr = Kora.callback.trigger('qbmultichar:server:enterMode', 'selection')
         -- An explicit `false` is a real refusal with a reason ('already logged
         -- in') and must not be retried. Only nil -- the shape a rejected or
         -- timed-out round trip takes -- means "ask again".
@@ -217,10 +217,10 @@ local function refreshCharacters()
     SceneRuntime.beginMode()
 
     local fetched = bootCall('character list fetch', function()
-        local list = QB.callback.trigger('qb-multicharacter:server:setupCharacters')
+        local list = Kora.callback.trigger('qb-multicharacter:server:setupCharacters')
         return type(list) == 'table' and list or nil
     end) or {}
-    maxCharacters = QB.callback.trigger('qb-multicharacter:server:GetNumberOfCharacters') or maxCharacters
+    maxCharacters = Kora.callback.trigger('qb-multicharacter:server:GetNumberOfCharacters') or maxCharacters
     sceneCatalog = fetchSceneCatalog() or {}
     setCharacters(fetched)
 
@@ -253,7 +253,7 @@ RegisterNetEvent('qb-multicharacter:client:chooseChar', refreshCharacters)
 -- logout path lands here: kora_multichar's own /logout, an admin resource calling
 -- the core export, or a delete that logs out a live handle.
 --
--- Raw AddStateBagChangeHandler rather than QB.state.onChange, for the reason
+-- Raw AddStateBagChangeHandler rather than Kora.state.onChange, for the reason
 -- fxmanifest.lua gives for the NUI natives: the kora_lib call registers the
 -- handler inside kora_lib's own VM and relays every change back over a
 -- cross-resource funcref. kora_hud and kora_clothing watch this same key the same way.
@@ -373,7 +373,7 @@ end)
 RegisterNUICallback('multichar:delete', function(data, cb)
     local citizenid = type(data) == 'table' and data.citizenid
     if type(citizenid) ~= 'string' or not charactersById[citizenid] then cb({ ok = false }); return end
-    local deleted, err = QB.callback.trigger('qb-multicharacter:server:deleteCharacter', citizenid)
+    local deleted, err = Kora.callback.trigger('qb-multicharacter:server:deleteCharacter', citizenid)
     if not deleted then
         send('multichar:error', err or 'Could not delete that character.')
         cb({ ok = false }); return
@@ -419,10 +419,10 @@ end
 
 CreateThread(function()
     awaitStablePlayerPed()
-    local serverId = QB.cache.serverId()
+    local serverId = Kora.cache.serverId()
     while not serverId or serverId == -1 do
         Wait(0)
-        serverId = QB.cache.serverId()
+        serverId = Kora.cache.serverId()
     end
     -- Registered here, not at file scope: the bag name needs a real server id,
     -- which only exists once the session has started.

@@ -12,7 +12,7 @@ local function vector(x, y, z, w)
 end
 _G.vector3 = function(x, y, z) return vector(x, y, z) end
 _G.vector4 = function(x, y, z, w) return vector(x, y, z, w) end
-_G.QB = { util = { isFiniteNumber = function(value)
+_G.Kora = { util = { isFiniteNumber = function(value)
     return type(value) == 'number' and value == value and value > -math.huge and value < math.huge
 end } }
 

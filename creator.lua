@@ -48,7 +48,7 @@ local function startEditorCamera()
     RequestCollisionAtCoord(anchor.x, anchor.y, anchor.z)
     creator.camCoords = creator.camCoords or vector3(anchor.x + 6.0, anchor.y - 8.0, anchor.z + 3.0)
     creator.camRot = creator.camRot or vector3(-12.0, 0.0, anchor.w or 0.0)
-    local freecam, err = QB.freecam.start({
+    local freecam, err = Kora.freecam.start({
         coords = creator.camCoords,
         rotation = creator.camRot,
         fov = 45.0,
@@ -62,7 +62,7 @@ local function startEditorCamera()
     })
     if not freecam then return false, err end
     creator.freecam, creator.cam = freecam, freecam.getCamera()
-    creator.instructions = QB.instructional.show({
+    creator.instructions = Kora.instructional.show({
         { control = 32, label = 'Move forward' },
         { control = 33, label = 'Move backward' },
         { control = 34, label = 'Move left' },
@@ -97,7 +97,7 @@ local function placementPoint()
         creator.camCoords = creator.freecam.getCoords() or creator.camCoords
         local rotation = creator.freecam.getRotation()
         if rotation then creator.camRot = vector3(rotation.pitch, rotation.roll, rotation.yaw) end
-        local ok, hit, coords = pcall(function() return QB.raycast.fromCam(creator.cam, 75.0) end)
+        local ok, hit, coords = pcall(function() return Kora.raycast.fromCam(creator.cam, 75.0) end)
         if ok and hit and coords then return { x = coords.x, y = coords.y, z = coords.z, w = creator.camRot.z } end
         local forward = forwardVector(creator.camRot)
         return {
@@ -156,7 +156,7 @@ local function exportDraft(registerCall)
     else
         text = ("Config.scenes[%q] = %s"):format(normalized.id, body)
     end
-    QB.nui.copyToClipboard(text)
+    Kora.nui.copyToClipboard(text)
     send('multichar:creator:exported', { registerCall = registerCall })
 end
 
@@ -165,7 +165,7 @@ local function closeCreator()
     creator.active = false
     destroyEditorCamera()
     SceneRuntime.endMode()
-    QB.callback.trigger('qbmultichar:server:leaveMode')
+    Kora.callback.trigger('qbmultichar:server:leaveMode')
     SetNuiFocus(false, false)
     send('multichar:creator:close')
     creator.draft, creator.catalog = nil, {}
@@ -229,7 +229,7 @@ end)
 RegisterCommand('qbmultichar_creator_toggle', function()
     if creator.active then setCursor(not creator.cursor) end
 end, false)
-creatorToggleBinding = QB.keybind.add({
+creatorToggleBinding = Kora.keybind.add({
     name = 'qbmultichar_creator_toggle',
     description = 'Scene Studio: Toggle Cursor / Freecam',
     defaultKey = 'TAB',

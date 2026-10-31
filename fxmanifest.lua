@@ -31,9 +31,9 @@ files {
 }
 
 -- Required to reach kora_lib APIs -- see kora_lib's own AGENTS.md for why this is how
--- a consumer resource pulls in the QB proxy (init.lua). NUI messaging itself
+-- a consumer resource pulls in the Kora proxy (init.lua). NUI messaging itself
 -- goes through the raw natives (SendNUIMessage/RegisterNUICallback) instead
--- of QB.nui.* -- this resource owns its own frame now, and QB.nui.* would
+-- of Kora.nui.* -- this resource owns its own frame now, and Kora.nui.* would
 -- dispatch into kora_lib's own resource VM/frame via the cross-resource export
 -- call, not this one.
 shared_scripts {

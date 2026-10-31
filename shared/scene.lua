@@ -10,7 +10,7 @@ local ALLOWED_CUES = {
     vehicleRoute = true,
 }
 
-local finite = QB.util.isFiniteNumber
+local finite = Kora.util.isFiniteNumber
 
 local function array(value)
     if type(value) ~= 'table' then return false end

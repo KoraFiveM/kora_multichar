@@ -33,7 +33,7 @@ _G.RegisterNetEvent = function(name, handler) netHandlers[name] = handler end
 _G.RegisterNUICallback = function() end
 _G.SendNUIMessage = function(payload) nuiMessages[#nuiMessages + 1] = payload end
 local ownedHouses = {}
-_G.QB = { callback = { trigger = function() return ownedHouses end } }
+_G.Kora = { callback = { trigger = function() return ownedHouses end } }
 dofile(root .. 'spawn.lua')
 
 ---@return table locations, table payload

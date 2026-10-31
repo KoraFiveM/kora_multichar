@@ -120,11 +120,11 @@ exports('UnregisterScene', function(id)
     return unregisterScene(GetInvokingResource() or GetCurrentResourceName(), id, true)
 end)
 
-QB.callback.register('qbmultichar:server:getScenes', function()
+Kora.callback.register('qbmultichar:server:getScenes', function()
     return SceneSchema.clone(scenes)
 end)
 
-QB.callback.register('qbmultichar:server:enterMode', function(src, mode)
+Kora.callback.register('qbmultichar:server:enterMode', function(src, mode)
     local loggedIn = Player(src).state['qbcore:loggedIn'] == true
     if mode == 'selection' and loggedIn then return false, 'already logged in' end
     if mode == 'spawn' and (not sessions[src] or not loggedIn) then return false, 'spawn transition is not active' end
@@ -132,12 +132,12 @@ QB.callback.register('qbmultichar:server:enterMode', function(src, mode)
     return enterMode(src, mode)
 end, { rateLimit = { max = 8, window = 10000 } })
 
-QB.callback.register('qbmultichar:server:leaveMode', function(src)
+Kora.callback.register('qbmultichar:server:leaveMode', function(src)
     return leaveMode(src)
 end, { rateLimit = { max = 8, window = 10000 } })
 
 -- Staff gating goes through kora_lib's permission gateway rather than a rank
--- table over kora_core's getPermission. QB.permissions.hasLevel accepts either
+-- table over kora_core's getPermission. Kora.permissions.hasLevel accepts either
 -- `kora_core.<level>` or the bare `group.<level>` principal (which is how this
 -- test server's server.cfg actually grants admin), folds in Discord roles
 -- where a server maps them, and owns the cascade -- so a 'god' satisfies an
@@ -145,23 +145,23 @@ end, { rateLimit = { max = 8, window = 10000 } })
 local LEVELS = { 'god', 'admin', 'mod', 'user' } -- most-privileged first
 local PERMISSION_OPTIONS = { prefix = 'qbcore' }
 
----Matches QB.commands' checkPermission(source, permission) signature.
+---Matches Kora.commands' checkPermission(source, permission) signature.
 ---@param src integer
 ---@param permission string|nil
 ---@return boolean
 local function staffAllowed(src, permission)
-    return QB.permissions.hasLevel(src, permission or 'admin', LEVELS, PERMISSION_OPTIONS)
+    return Kora.permissions.hasLevel(src, permission or 'admin', LEVELS, PERMISSION_OPTIONS)
 end
 
 if Config.creator.enabled then
-    QB.commands.add(Config.creator.command, 'Open the cinematic multicharacter scene studio', nil, false, function(src)
+    Kora.commands.add(Config.creator.command, 'Open the cinematic multicharacter scene studio', nil, false, function(src)
         if Player(src).state['qbcore:loggedIn'] ~= true then
-            QB.notify.send(src, { type = 'error', message = 'Load a character before opening the scene studio.' })
+            Kora.notify.send(src, { type = 'error', message = 'Load a character before opening the scene studio.' })
             return
         end
         local ok, err = enterMode(src, 'creator')
         if not ok then
-            QB.notify.send(src, { type = 'error', message = err or 'Could not open the scene studio.' })
+            Kora.notify.send(src, { type = 'error', message = err or 'Could not open the scene studio.' })
             return
         end
         TriggerClientEvent('qbmultichar:client:openCreator', src, SceneSchema.clone(scenes))
@@ -177,9 +177,9 @@ end
 -- so an admin resource or a character delete on a live handle returns the
 -- player to selection through exactly the same path this command does.
 if Config.logout.enabled then
-    QB.commands.add(Config.logout.command, 'Drop your character and return to character select', nil, false, function(src)
+    Kora.commands.add(Config.logout.command, 'Drop your character and return to character select', nil, false, function(src)
         if Player(src).state['qbcore:loggedIn'] ~= true then
-            QB.notify.send(src, { type = 'error', message = 'You are not on a character.' })
+            Kora.notify.send(src, { type = 'error', message = 'You are not on a character.' })
             return
         end
         -- Refused mid-cinematic: selection/spawn/creator each own the player's
@@ -187,12 +187,12 @@ if Config.logout.enabled then
         -- one of them would strand the client in a scene with no character to
         -- return to. Leaving the studio or finishing the spawn is one keypress.
         if sessions[src] then
-            QB.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
+            Kora.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
             return
         end
         local ok, result = pcall(function() return exports.kora_core:logout(src) end)
         if not ok or result ~= true then
-            QB.notify.send(src, { type = 'error', message = 'Could not log out of that character.' })
+            Kora.notify.send(src, { type = 'error', message = 'Could not log out of that character.' })
         end
     end, {
         permission = Config.logout.minimumPermission,
