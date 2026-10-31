@@ -20,3 +20,19 @@ describe('text selection', () => {
     expect(css).toMatch(/img, svg \{ -webkit-user-drag: none/);
   });
 });
+
+describe("edge insets", () => {
+  it("keeps the top bar icon buttons away from the viewport edge", () => {
+    expect(css).toMatch(/\.topbar \{[^}]*left: var\(--topbar-inset\); right: var\(--topbar-inset\)/);
+    expect(css).toMatch(/--topbar-inset: calc\(var\(--edge-inset\) \+ 28px\)/);
+  });
+
+  it("never shrinks the inset below 16px on small screens", () => {
+    expect(css).toMatch(/@media \(max-width: 720px\) \{\s*:root \{ --edge-inset: 16px; --topbar-inset: var\(--edge-inset\); \}/);
+    expect(css).not.toMatch(/(right|left): 8px/);
+  });
+
+  it("pads panel close buttons from the panel edge", () => {
+    expect(css).toMatch(/\.dossier-heading, \.panel-heading \{ padding-right: 4px; \}/);
+  });
+});

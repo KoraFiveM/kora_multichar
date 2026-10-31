@@ -1,4 +1,4 @@
-:root { --edge-inset: 20px; }
+:root { --edge-inset: 20px; --topbar-inset: calc(var(--edge-inset) + 28px); }
 /* UI text is not selectable anywhere: a click-drag across the character list
    would otherwise highlight labels and icons on top of the scene. Form fields
    stay selectable and editable. */
@@ -20,7 +20,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .transition-pulse { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid hsl(var(--brand-border)); border-radius: 16px; background: hsl(var(--brand-soft)); color: hsl(var(--primary)); box-shadow: 0 0 42px hsl(var(--primary) / .12); }
 .transition-content h2 { margin: 16px 0 5px; font-size: 21px; letter-spacing: -.025em; }.transition-content p { margin: 0; color: hsl(var(--muted-foreground)); font-size: 10px; }
 .transition-progress { width: 150px; height: 2px; margin-top: 20px; overflow: hidden; border-radius: 99px; background: hsl(var(--muted)); }.transition-progress i { display: block; width: 42%; height: 100%; border-radius: inherit; background: hsl(var(--primary)); box-shadow: 0 0 12px hsl(var(--primary)); animation: transition-progress 1.15s ease-in-out infinite; }
-.topbar { position: absolute; z-index: 2; top: 28px; left: 38px; right: 38px; display: flex; align-items: flex-start; justify-content: space-between; }
+.topbar { position: absolute; z-index: 2; top: 28px; left: var(--topbar-inset); right: var(--topbar-inset); display: flex; align-items: flex-start; justify-content: space-between; }
 .topbar h1 { margin: 3px 0 0; font-size: 25px; line-height: 1; letter-spacing: -.025em; text-shadow: 0 2px 18px rgb(0 0 0 / .8); }
 .eyebrow { color: hsl(var(--primary)); font-size: 10px; font-weight: 800; letter-spacing: .16em; text-transform: uppercase; }
 .panel { border: 1px solid hsl(var(--border) / .86); border-radius: var(--radius); background: hsl(var(--card) / .94); box-shadow: 0 18px 48px rgb(0 0 0 / .48), inset 0 1px hsl(0 0% 100% / .035); }
@@ -65,6 +65,7 @@ kbd { border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(
 .dossier { position: absolute; z-index: 4; bottom: 190px; left: 50%; width: min(660px, calc(100vw - 32px)); padding: 17px; transform: translateX(-50%); animation: dossier-in .24s cubic-bezier(.16,1,.3,1); }
 .dossier::after { content: ""; position: absolute; bottom: -6px; left: 50%; width: 11px; height: 11px; transform: translateX(-50%) rotate(45deg); border-right: 1px solid hsl(var(--border) / .86); border-bottom: 1px solid hsl(var(--border) / .86); background: hsl(var(--card)); }
 .dossier-heading { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; }.dossier-heading h3 { margin: 2px 0 2px; font-size: 17px; letter-spacing: -.02em; }.dossier-heading p { margin: 0; color: hsl(var(--muted-foreground)); font-size: 9px; }
+.dossier-heading, .panel-heading { padding-right: 4px; }
 .panel-heading { display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; }
 .panel-heading h3 { margin: 3px 0 0; font-size: 18px; letter-spacing: -.02em; }
 .detail-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; margin-top: 15px; }
@@ -147,7 +148,8 @@ textarea { resize: vertical; }
 @keyframes flight-pulse { to { transform: translate(2px, -2px); filter: drop-shadow(0 0 5px hsl(var(--primary))); } }
 @media (max-width: 1000px) { .creator-left, .creator-right { width: 242px; }.timeline { left: 256px; right: 256px; }.character-card, .spawn-card { width: min(600px, calc(100vw - 104px)); }.dossier { width: min(600px, calc(100vw - 32px)); }.detail-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
 @media (max-width: 720px) {
-  .topbar { top: 14px; left: 16px; right: 16px; }
+  :root { --edge-inset: 16px; --topbar-inset: var(--edge-inset); }
+  .topbar { top: 14px; }
   .topbar h1 { font-size: 18px; }
   .scene-label { top: 64px; max-width: calc(100vw - 32px); }
   .carousel-shell { bottom: 24px; width: calc(100vw - 24px); }
@@ -168,9 +170,9 @@ textarea { resize: vertical; }
   .modal { width: calc(100vw - 24px); padding: 16px; }
   .field-grid { grid-template-columns: 1fr; }
   .creator-left, .creator-right { top: 104px; bottom: 154px; width: calc(50vw - 18px); padding: 8px; }
-  .creator-left { left: 8px; }.creator-right { right: 8px; }
-  .timeline { left: 8px; right: 8px; bottom: 58px; height: 86px; }
-  .creator-actions { right: 8px; bottom: 8px; }
+  .creator-left { left: var(--edge-inset); }.creator-right { right: var(--edge-inset); }
+  .timeline { left: var(--edge-inset); right: var(--edge-inset); bottom: 58px; height: 86px; }
+  .creator-actions { right: var(--edge-inset); bottom: var(--edge-inset); }
 }
 @media (max-height: 720px) { .creator-left, .creator-right { bottom: 166px; }.timeline { bottom: 62px; height: 90px; }.carousel-shell { bottom: 38px; }.dossier { bottom: 172px; }.key-hints { display: none; } }
 @media (prefers-reduced-motion: reduce) { *, *::before, *::after { animation-duration: .01ms !important; transition-duration: .01ms !important; } }
