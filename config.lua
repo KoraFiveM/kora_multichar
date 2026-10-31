@@ -63,6 +63,17 @@ Config.defaultScene = 'civilian'
 -- stuck on it. 0 disables the watchdog.
 Config.previewWatchdogMs = 15000
 
+-- Camera behaviour on the character-select screen (and the create-character
+-- preview).
+--   'focus' : the camera settles on the previewed ped -- the selected
+--             character, or the create-slot ped when there are no characters --
+--             and stays there. It only moves (smooth interpolation) when the
+--             selection changes. Scene timeline camera cues are ignored; every
+--             other cue (animations, vehicles, particles, sound) still plays.
+--   'cycle' : the original behaviour. The scene timeline keeps cutting between
+--             its close, focal and establishing cameras on a loop.
+Config.cameraMode = 'focus'
+
 Config.ui = {
     -- Clicking outside the Create Identity dialog closes it. Off by default so
     -- a stray click cannot throw away a half-typed identity.

@@ -22,6 +22,15 @@ Config.previewWatchdogMs = QB.config.number(Config.previewWatchdogMs, {
     label = 'Preview watchdog (ms)',
     description = 'How long a character-select preview may stay on the loading cover before the interface gives up, hides the cover and shows an error. Set to 0 to disable the watchdog. Applies the next time character select opens.',
 })
+Config.cameraMode = QB.config.enum(Config.cameraMode, {
+    live = true,
+    label = 'Character-select camera mode',
+    description = 'Focus keeps the camera on the previewed ped (the selected character, or the create-slot ped when there are no characters) and only moves it when the selection changes. Cycle keeps the original behaviour, where the scene timeline loops through its close, focal and establishing camera angles. Applies the next time a character preview loads.',
+    options = {
+        { value = 'focus', label = 'Focus on the selected ped' },
+        { value = 'cycle', label = 'Cycle camera angles' },
+    },
+})
 Config.ui.closeCreateOnBackdrop = QB.config.boolean(Config.ui.closeCreateOnBackdrop, {
     live = true,
     label = 'Close Create Identity on outside click',

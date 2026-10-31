@@ -595,6 +595,15 @@ end
 local function startTimeline(scene)
     local timeline = scene.timeline or {}
     local cues = timeline.cues or {}
+    -- 'focus' (the default, also when unset) keeps the camera on the previewed
+    -- ped: camera cues are dropped, every other cue still plays.
+    if Config.cameraMode ~= 'cycle' then
+        local kept = {}
+        for _, cue in ipairs(cues) do
+            if cue.type ~= 'camera' then kept[#kept + 1] = cue end
+        end
+        cues = kept
+    end
     if #cues == 0 or (timeline.durationMs or 0) <= 0 then return end
     state.timelineGeneration = state.timelineGeneration + 1
     local generation = state.timelineGeneration
