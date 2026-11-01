@@ -49,7 +49,10 @@ build` from the `web` directory.
   rejects values outside the list. Set `Config.allowFreeTextNationality = true`
   (or an empty list) for a free-text field. `Config.ui.brandName` (default
   `Kora`) sets the brand text and `Config.ui.showNewSlotBadge` (default off)
-  shows the NEW badge on the free slot. The UI font is Onest, bundled in
+  shows the NEW badge on the free slot. `Config.ui.profile` sets the title of every
+  Profile card and the optional description line of Birth date (default none),
+  Nationality (`Place of origin`) and Citizen ID (default none); an empty
+  description hides the line. The UI font is Onest, bundled in
   `web/src/fonts` (SIL OFL 1.1, licence alongside); override `--font-sans` in
   `web/src/styles.css` to change it.
 - Spawn choice is mandatory after an existing character loads. Fixed, last,

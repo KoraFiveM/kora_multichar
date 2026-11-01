@@ -232,6 +232,7 @@ local function refreshCharacters()
             confirmDiscardOnClose = Config.ui.confirmDiscardOnClose,
             brandName = Config.ui.brandName,
             showNewSlotBadge = Config.ui.showNewSlotBadge,
+            profile = Config.ui.profile,
             nationalities = Config.nationalities,
             defaultNationality = Config.defaultNationality,
             allowFreeTextNationality = Config.allowFreeTextNationality,

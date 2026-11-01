@@ -100,6 +100,19 @@ Config.ui = {
     brandName = 'Kora',
     -- Shows a "NEW" badge on the "Available character slot" card.
     showNewSlotBadge = false,
+    -- Text on the cards of the character Profile panel. Every card has a label;
+    -- Birth date, Nationality and Citizen ID also have an optional description
+    -- line. An empty description ('') hides the line and the card collapses to
+    -- label + value. Career, Affiliation and Finances show live job/gang/money
+    -- detail instead, so only their labels are configurable.
+    profile = {
+        career      = { label = 'Career' },
+        affiliation = { label = 'Affiliation' },
+        finances    = { label = 'Finances' },
+        birthDate   = { label = 'Birth date', description = '' },
+        nationality = { label = 'Nationality', description = 'Place of origin' },
+        citizenId   = { label = 'Citizen ID', description = '' },
+    },
 }
 
 -- Nationality choices on the Create Identity form. The form shows a dropdown of

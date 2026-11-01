@@ -52,6 +52,27 @@ describe('character selection', () => {
     expect(nui.fetch).toHaveBeenCalledWith('multichar:select', { citizenid: 'JANE1' });
   });
 
+  it('labels profile cards from config and hides empty descriptions', () => {
+    render(<App />);
+    message('multichar:show', { characters: [jane], maxCharacters: 1 });
+    fireEvent.click(screen.getByRole('button', { name: /profile/i }));
+    expect(screen.getByText('Citizen ID')).toBeTruthy();
+    expect(screen.queryByText('Citizen record')).toBeNull();
+    expect(screen.queryByText('Registered identity')).toBeNull();
+    expect(screen.queryByText('Permanent identifier')).toBeNull();
+    expect(screen.getByText('Place of origin')).toBeTruthy();
+    expect(screen.getByText('2000-02-29').parentElement?.querySelector('em')).toBeNull();
+  });
+
+  it('applies configured profile text', () => {
+    render(<App />);
+    message('multichar:show', { characters: [jane], maxCharacters: 1, ui: { profile: { birthDate: { label: 'DOB', description: 'Born' }, citizenId: { label: 'State ID', description: '' } } } });
+    fireEvent.click(screen.getByRole('button', { name: /profile/i }));
+    expect(screen.getByText('DOB')).toBeTruthy();
+    expect(screen.getByText('Born')).toBeTruthy();
+    expect(screen.getByText('State ID')).toBeTruthy();
+  });
+
   it('shows dossier fields and requires the exact typed name before deletion', () => {
     render(<App />);
     message('multichar:show', { characters: [jane], maxCharacters: 1 });

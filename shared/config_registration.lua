@@ -51,6 +51,51 @@ Config.ui.showNewSlotBadge = Kora.config.boolean(Config.ui.showNewSlotBadge, {
     label = 'Show NEW badge on the free character slot',
     description = 'When enabled, the "Available character slot" card carries a NEW badge. Off by default. Applies the next time character select opens.',
 })
+Config.ui.profile.career.label = Kora.config.string(Config.ui.profile.career.label, {
+    live = true, minLength = 1, maxLength = 32,
+    label = 'Profile card title: Career',
+    description = 'The title of the Career card on the character Profile panel. Applies the next time character select opens.',
+})
+Config.ui.profile.affiliation.label = Kora.config.string(Config.ui.profile.affiliation.label, {
+    live = true, minLength = 1, maxLength = 32,
+    label = 'Profile card title: Affiliation',
+    description = 'The title of the Affiliation card on the character Profile panel. Applies the next time character select opens.',
+})
+Config.ui.profile.finances.label = Kora.config.string(Config.ui.profile.finances.label, {
+    live = true, minLength = 1, maxLength = 32,
+    label = 'Profile card title: Finances',
+    description = 'The title of the Finances card on the character Profile panel. Applies the next time character select opens.',
+})
+Config.ui.profile.birthDate.label = Kora.config.string(Config.ui.profile.birthDate.label, {
+    live = true, minLength = 1, maxLength = 32,
+    label = 'Profile card title: Birth date',
+    description = 'The title of the Birth date card on the character Profile panel. Applies the next time character select opens.',
+})
+Config.ui.profile.birthDate.description = Kora.config.string(Config.ui.profile.birthDate.description, {
+    live = true, maxLength = 48,
+    label = 'Profile card description: Birth date',
+    description = 'The small line under the Birth date value on the character Profile panel. Leave it empty to show no description; the card then collapses to its title and value. Applies the next time character select opens.',
+})
+Config.ui.profile.nationality.label = Kora.config.string(Config.ui.profile.nationality.label, {
+    live = true, minLength = 1, maxLength = 32,
+    label = 'Profile card title: Nationality',
+    description = 'The title of the Nationality card on the character Profile panel. Applies the next time character select opens.',
+})
+Config.ui.profile.nationality.description = Kora.config.string(Config.ui.profile.nationality.description, {
+    live = true, maxLength = 48,
+    label = 'Profile card description: Nationality',
+    description = 'The small line under the Nationality value on the character Profile panel. Leave it empty to show no description; the card then collapses to its title and value. Applies the next time character select opens.',
+})
+Config.ui.profile.citizenId.label = Kora.config.string(Config.ui.profile.citizenId.label, {
+    live = true, minLength = 1, maxLength = 32,
+    label = 'Profile card title: Citizen ID',
+    description = 'The title of the Citizen ID card on the character Profile panel. Applies the next time character select opens.',
+})
+Config.ui.profile.citizenId.description = Kora.config.string(Config.ui.profile.citizenId.description, {
+    live = true, maxLength = 48,
+    label = 'Profile card description: Citizen ID',
+    description = 'The small line under the Citizen ID value on the character Profile panel. Leave it empty to show no description; the card then collapses to its title and value. Applies the next time character select opens.',
+})
 Config.nationalities = Kora.config.list(Config.nationalities, Kora.config.string('', { minLength = 2, maxLength = 32 }), {
     live = true,
     label = 'Nationality choices',

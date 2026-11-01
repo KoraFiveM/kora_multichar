@@ -14,8 +14,33 @@ type Stage = "hidden" | "characters" | "spawn" | "creator";
 type CreatorPayload = { draft?: SceneDraft; scenes?: Record<string, SceneDraft>; cursor?: boolean; error?: string };
 type UiSettings = {
   brandName: string; showNewSlotBadge: boolean; nationalities: string[]; defaultNationality: string; allowFreeTextNationality: boolean;
+  profile: ProfileText;
 };
-const DEFAULT_UI: UiSettings = { brandName: "Kora", showNewSlotBadge: false, nationalities: [], defaultNationality: "", allowFreeTextNationality: false };
+type ProfileCard = "career" | "affiliation" | "finances" | "birthDate" | "nationality" | "citizenId";
+type ProfileText = Record<ProfileCard, { label: string; description: string }>;
+const DEFAULT_PROFILE: ProfileText = {
+  career: { label: "Career", description: "" },
+  affiliation: { label: "Affiliation", description: "" },
+  finances: { label: "Finances", description: "" },
+  birthDate: { label: "Birth date", description: "" },
+  nationality: { label: "Nationality", description: "Place of origin" },
+  citizenId: { label: "Citizen ID", description: "" },
+};
+const DEFAULT_UI: UiSettings = { brandName: "Kora", showNewSlotBadge: false, nationalities: [], defaultNationality: "", allowFreeTextNationality: false, profile: DEFAULT_PROFILE };
+
+function parseProfile(raw: unknown): ProfileText {
+  const source = (raw && typeof raw === "object" ? raw : {}) as Record<string, { label?: unknown; description?: unknown } | undefined>;
+  const profile = { ...DEFAULT_PROFILE };
+  for (const key of Object.keys(DEFAULT_PROFILE) as ProfileCard[]) {
+    const entry = source[key];
+    const label = typeof entry?.label === "string" ? entry.label.trim() : "";
+    profile[key] = {
+      label: label || DEFAULT_PROFILE[key].label,
+      description: typeof entry?.description === "string" ? entry.description.trim() : DEFAULT_PROFILE[key].description,
+    };
+  }
+  return profile;
+}
 
 function parseUi(raw: unknown): UiSettings {
   const ui = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
@@ -29,6 +54,7 @@ function parseUi(raw: unknown): UiSettings {
     nationalities,
     defaultNationality: typeof ui.defaultNationality === "string" ? ui.defaultNationality.trim() : "",
     allowFreeTextNationality: ui.allowFreeTextNationality === true,
+    profile: parseProfile(ui.profile),
   };
 }
 
@@ -277,7 +303,7 @@ export function App() {
       {stage === "characters" && (
         <CharacterScreen
           characters={characters} character={character} index={index} count={slideCount} canCreate={canCreate}
-          brand={uiSettings.brandName} showNewBadge={uiSettings.showNewSlotBadge}
+          brand={uiSettings.brandName} showNewBadge={uiSettings.showNewSlotBadge} profile={uiSettings.profile}
           details={details} previewing={previewing} sceneName={sceneName} busy={busy}
           onMove={move} onAccept={accept} onDetails={() => setDetails((value) => !value)}
           onCreate={() => setCreating(true)} onDelete={() => setDeleting(true)}
@@ -320,7 +346,7 @@ function SceneTransition({ stage, previewStage, brand }: { stage: "characters" |
 
 function CharacterScreen(props: {
   characters: Character[]; character: Character | null; index: number; count: number; canCreate: boolean;
-  brand: string; showNewBadge: boolean;
+  brand: string; showNewBadge: boolean; profile: ProfileText;
   details: boolean; previewing: boolean; sceneName: string; busy: boolean;
   onMove: (delta: number) => void; onAccept: () => void; onDetails: () => void; onCreate: () => void; onDelete: () => void;
 }) {
@@ -335,7 +361,7 @@ function CharacterScreen(props: {
       <button className="icon-button" aria-label="Disconnect" onClick={() => fetchNui("multichar:disconnect")}><LogOut size={18} /></button>
     </header>
     <div className="scene-label"><Clapperboard size={13} />{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</div>
-    {props.details && character && <Dossier character={character} onClose={props.onDetails} onDelete={props.onDelete} />}
+    {props.details && character && <Dossier character={character} profile={props.profile} onClose={props.onDetails} onDelete={props.onDelete} />}
     <section className="carousel-shell">
       <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(-1)} aria-label="Previous"><ChevronLeft /></button>
       <div className={`identity-card character-card${character ? "" : " new-character-card"}`}>
@@ -366,8 +392,12 @@ function CharacterScreen(props: {
   </>;
 }
 
-function Dossier({ character, onClose, onDelete }: { character: Character; onClose: () => void; onDelete: () => void }) {
+function Dossier({ character, profile, onClose, onDelete }: { character: Character; profile: ProfileText; onClose: () => void; onDelete: () => void }) {
   const gang = character.gang?.name && character.gang.name !== "none" ? character.gang : null;
+  const card = (key: ProfileCard, icon: ReactNode, value: string, detail?: string) => {
+    const text = detail === undefined ? profile[key].description : detail;
+    return <div>{icon}<span><small>{profile[key].label}</small><strong>{value}</strong>{text && <em>{text}</em>}</span></div>;
+  };
   return <aside className="dossier panel">
     <div className="dossier-heading">
       <div className="identity-mark compact" aria-hidden>{characterInitials(character)}</div>
@@ -375,12 +405,12 @@ function Dossier({ character, onClose, onDelete }: { character: Character; onClo
       <button className="icon-button" aria-label="Close profile" onClick={onClose}><X size={16} /></button>
     </div>
     <div className="detail-list">
-      <div><Briefcase /><span><small>Career</small><strong>{roleLabel(character.job, "Civilian")}</strong><em>{gradeLabel(character.job)}</em></span></div>
-      <div><Users /><span><small>Affiliation</small><strong>{gang ? roleLabel(gang, gang.name || "Gang") : "None"}</strong><em>{gang ? gradeLabel(gang) : "Independent"}</em></span></div>
-      <div><Wallet /><span><small>Finances</small><strong>{money(character.money?.bank)} bank</strong><em>{money(character.money?.cash)} cash</em></span></div>
-      <div><CalendarDays /><span><small>Birth date</small><strong>{character.charinfo?.birthdate || "Unknown"}</strong><em>Registered identity</em></span></div>
-      <div><Flag /><span><small>Nationality</small><strong>{character.charinfo?.nationality || "Unknown"}</strong><em>Place of origin</em></span></div>
-      <div><Fingerprint /><span><small>Citizen record</small><strong>{character.citizenid}</strong><em>Permanent identifier</em></span></div>
+      {card("career", <Briefcase />, roleLabel(character.job, "Civilian"), gradeLabel(character.job))}
+      {card("affiliation", <Users />, gang ? roleLabel(gang, gang.name || "Gang") : "None", gang ? gradeLabel(gang) : "Independent")}
+      {card("finances", <Wallet />, `${money(character.money?.bank)} bank`, `${money(character.money?.cash)} cash`)}
+      {card("birthDate", <CalendarDays />, character.charinfo?.birthdate || "Unknown")}
+      {card("nationality", <Flag />, character.charinfo?.nationality || "Unknown")}
+      {card("citizenId", <Fingerprint />, character.citizenid)}
     </div>
     <button className="danger-link" onClick={onDelete}><Trash2 size={14} />Delete character</button>
   </aside>;
