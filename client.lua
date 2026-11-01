@@ -154,9 +154,9 @@ local function announceSpawnComplete(isNew)
     end)
 end
 
-local function finishAt(coords)
+local function finishAt(coords, forceNew)
     previewGeneration = previewGeneration + 1
-    local isNew = pendingNewCharacter
+    local isNew = pendingNewCharacter or forceNew == true
     pendingNewCharacter = false
 
     DoScreenFadeOut(250)
@@ -181,8 +181,8 @@ end
 
 -- Shared with spawn.lua; one finalization path prevents cleanup differences
 -- between fixed, last-location, and future house spawns.
-function multicharFinishSpawn(coords)
-    finishAt(coords)
+function multicharFinishSpawn(coords, isNew)
+    finishAt(coords, isNew)
 end
 
 function multicharSetClientMode(mode)
