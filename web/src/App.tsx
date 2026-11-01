@@ -12,6 +12,26 @@ import type { Character, NuiMessage, SceneDraft, SpawnLocation } from "./types";
 
 type Stage = "hidden" | "characters" | "spawn" | "creator";
 type CreatorPayload = { draft?: SceneDraft; scenes?: Record<string, SceneDraft>; cursor?: boolean; error?: string };
+type UiSettings = {
+  brandName: string; showNewSlotBadge: boolean; nationalities: string[]; defaultNationality: string; allowFreeTextNationality: boolean;
+};
+const DEFAULT_UI: UiSettings = { brandName: "Kora", showNewSlotBadge: false, nationalities: [], defaultNationality: "", allowFreeTextNationality: false };
+
+function parseUi(raw: unknown): UiSettings {
+  const ui = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const nationalities = Array.isArray(ui.nationalities)
+    ? Array.from(new Set(ui.nationalities.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean)))
+    : [];
+  const brandName = typeof ui.brandName === "string" ? ui.brandName.trim() : "";
+  return {
+    brandName: brandName || DEFAULT_UI.brandName,
+    showNewSlotBadge: ui.showNewSlotBadge === true,
+    nationalities,
+    defaultNationality: typeof ui.defaultNationality === "string" ? ui.defaultNationality.trim() : "",
+    allowFreeTextNationality: ui.allowFreeTextNationality === true,
+  };
+}
+
 type SpawnPayload = { locations?: SpawnLocation[]; visible?: boolean; previewBudgetMs?: number };
 
 function roleLabel(role: Character["job"], fallback: string) {
@@ -42,8 +62,9 @@ export function App() {
   const [previewWatchdogMs, setPreviewWatchdogMs] = useState(0);
   const [closeCreateOnBackdrop, setCloseCreateOnBackdrop] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(true);
+  const [uiSettings, setUiSettings] = useState<UiSettings>(DEFAULT_UI);
   // Kept here, not in the dialog, so closing and reopening restores typed values.
-  const [createDraft, setCreateDraft] = useState<CreateDraft>(EMPTY_CREATE_DRAFT);
+  const [createDraft, setCreateDraft] = useState<CreateDraft>(() => emptyCreateDraft(DEFAULT_UI));
   // What the spawn preview is currently waiting on, for the cover's subtitle.
   const [previewStage, setPreviewStage] = useState<string | null>(null);
   const [spawnTraveling, setSpawnTraveling] = useState(false);
@@ -75,11 +96,13 @@ export function App() {
     const listener = (event: MessageEvent<NuiMessage>) => {
       const { action, data } = event.data || {};
       if (action === "multichar:show") {
-        const payload = data as { characters?: unknown; maxCharacters?: number; previewWatchdogMs?: number; ui?: { closeCreateOnBackdrop?: boolean; confirmDiscardOnClose?: boolean } };
+        const payload = data as { characters?: unknown; maxCharacters?: number; previewWatchdogMs?: number; ui?: Record<string, unknown> & { closeCreateOnBackdrop?: boolean; confirmDiscardOnClose?: boolean } };
         setPreviewWatchdogMs(Math.max(0, Number(payload?.previewWatchdogMs) || 0));
         setCloseCreateOnBackdrop(payload?.ui?.closeCreateOnBackdrop === true);
         setConfirmDiscard(payload?.ui?.confirmDiscardOnClose !== false);
-        setCreateDraft(EMPTY_CREATE_DRAFT);
+        const nextUi = parseUi(payload?.ui);
+        setUiSettings(nextUi);
+        setCreateDraft(emptyCreateDraft(nextUi));
         setCharacters(normalizeCharacters(payload?.characters));
         setMaxCharacters(Number(payload?.maxCharacters) || 5);
         spawnCameraReady.current = false;
@@ -258,6 +281,7 @@ export function App() {
       {stage === "characters" && (
         <CharacterScreen
           characters={characters} character={character} index={index} count={slideCount} canCreate={canCreate}
+          brand={uiSettings.brandName} showNewBadge={uiSettings.showNewSlotBadge}
           details={details} previewing={previewing} sceneName={sceneName} busy={busy}
           onMove={move} onAccept={accept} onDetails={() => setDetails((value) => !value)}
           onCreate={() => setCreating(true)} onDelete={() => setDeleting(true)}
@@ -267,8 +291,8 @@ export function App() {
       {stage === "creator" && creatorDraft && (
         <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
       )}
-      {previewing && !creating && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} />}
-      {creating && <CreateDialog draft={createDraft} onDraft={setCreateDraft} closeOnBackdrop={closeCreateOnBackdrop} confirmDiscard={confirmDiscard} onClose={() => setCreating(false)} onBusy={setBusy} />}
+      {previewing && !creating && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} brand={uiSettings.brandName} />}
+      {creating && <CreateDialog ui={uiSettings} draft={createDraft} onDraft={setCreateDraft} closeOnBackdrop={closeCreateOnBackdrop} confirmDiscard={confirmDiscard} onClose={() => setCreating(false)} onBusy={setBusy} />}
       {deleting && character && <DeleteDialog character={character} onClose={() => setDeleting(false)} onBusy={setBusy} />}
     </div>
   );
@@ -278,7 +302,7 @@ const PREVIEW_STAGE_TEXT: Record<string, string> = {
   streaming: "Streaming the area around your arrival point",
 };
 
-function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn"; previewStage?: string | null }) {
+function SceneTransition({ stage, previewStage, brand }: { stage: "characters" | "spawn"; previewStage?: string | null; brand: string }) {
   // The subtitle names what is actually being waited on when Lua has told us.
   // A world stream can legitimately take tens of seconds, and a fixed
   // "streaming the world" line for all of it is indistinguishable from a hung
@@ -289,7 +313,7 @@ function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn
   return <div className="scene-transition" role="status" aria-live="polite">
     <div className="transition-frame" aria-hidden><span /><span /><span /></div>
     <div className="transition-content">
-      <span className="transition-brand">QBCORE · CINEMATIC</span>
+      <span className="transition-brand">{brand} · CINEMATIC</span>
       <div className="transition-pulse"><Clapperboard size={20} /></div>
       <h2>{stage === "spawn" ? "Scouting your arrival" : "Setting your scene"}</h2>
       <p>{detail}</p>
@@ -300,6 +324,7 @@ function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn
 
 function CharacterScreen(props: {
   characters: Character[]; character: Character | null; index: number; count: number; canCreate: boolean;
+  brand: string; showNewBadge: boolean;
   details: boolean; previewing: boolean; sceneName: string; busy: boolean;
   onMove: (delta: number) => void; onAccept: () => void; onDetails: () => void; onCreate: () => void; onDelete: () => void;
 }) {
@@ -310,7 +335,7 @@ function CharacterScreen(props: {
   const total = String(props.characters.length).padStart(2, "0");
   return <>
     <header className="topbar">
-      <div><span className="eyebrow">QBCORE</span><h1>Choose your story</h1></div>
+      <div><span className="eyebrow brand-mark">{props.brand}</span><h1>Choose your story</h1></div>
       <button className="icon-button" aria-label="Disconnect" onClick={() => fetchNui("multichar:disconnect")}><LogOut size={18} /></button>
     </header>
     <div className="scene-label"><Clapperboard size={13} />{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</div>
@@ -322,7 +347,7 @@ function CharacterScreen(props: {
         <div className="identity-copy">
           <div className="identity-kicker">
             <span className="eyebrow">{character ? "SELECTED IDENTITY" : "AVAILABLE CHARACTER SLOT"}</span>
-            {character ? <span className="profile-count"><strong>{position}</strong><i>/</i>{total}</span> : <span className="new-slot-chip">NEW</span>}
+            {character ? <span className="profile-count"><strong>{position}</strong><i>/</i>{total}</span> : props.showNewBadge ? <span className="new-slot-chip">NEW</span> : null}
           </div>
           <h2>{character ? characterName(character) : "Create character"}</h2>
           {character ? <div className="identity-meta">
@@ -366,10 +391,21 @@ function Dossier({ character, onClose, onDelete }: { character: Character; onClo
 }
 
 type CreateDraft = { firstname: string; lastname: string; birthdate: string; nationality: string; gender: number };
-const EMPTY_CREATE_DRAFT: CreateDraft = { firstname: "", lastname: "", birthdate: "2000-01-01", nationality: "USA", gender: 0 };
 
-function CreateDialog({ draft, onDraft, closeOnBackdrop, confirmDiscard, onClose, onBusy }: { draft: CreateDraft; onDraft: (draft: CreateDraft) => void; closeOnBackdrop: boolean; confirmDiscard: boolean; onClose: () => void; onBusy: (value: boolean) => void }) {
+// The configured default wins when it is selectable (or when free text is
+// allowed); otherwise a list-backed form starts on its first entry.
+function emptyCreateDraft(ui: UiSettings): CreateDraft {
+  const list = ui.nationalities;
+  const nationality = list.length === 0 ? (ui.defaultNationality || "USA")
+    : list.includes(ui.defaultNationality) || (ui.allowFreeTextNationality && ui.defaultNationality) ? ui.defaultNationality : list[0];
+  return { firstname: "", lastname: "", birthdate: "2000-01-01", nationality, gender: 0 };
+}
+
+function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onClose, onBusy }: { ui: UiSettings; draft: CreateDraft; onDraft: (draft: CreateDraft) => void; closeOnBackdrop: boolean; confirmDiscard: boolean; onClose: () => void; onBusy: (value: boolean) => void }) {
   const [error, setError] = useState("");
+  const EMPTY_CREATE_DRAFT = useMemo(() => emptyCreateDraft(ui), [ui]);
+  const nationalityList = ui.nationalities;
+  const useDropdown = nationalityList.length > 0 && !ui.allowFreeTextNationality;
   const dirty = draft.firstname !== "" || draft.lastname !== "" || draft.birthdate !== EMPTY_CREATE_DRAFT.birthdate || draft.nationality !== EMPTY_CREATE_DRAFT.nationality;
   const setField = (field: keyof CreateDraft, value: string | number) => onDraft({ ...draft, [field]: value });
   // X, Cancel and Escape are deliberate, so they ask before discarding typed data.
@@ -405,16 +441,19 @@ function CreateDialog({ draft, onDraft, closeOnBackdrop, confirmDiscard, onClose
     const gender = draft.gender;
     if (!firstname || firstname.length > 24 || !lastname || lastname.length > 24) { setError("Names must be between 1 and 24 characters."); return; }
     if (!isValidBirthdate(birthdate)) { setError("Enter a real, non-future birth date."); return; }
+    if (useDropdown && !nationalityList.includes(nationality)) { setError("Choose a nationality from the list."); return; }
     if (nationality.length < 2 || nationality.length > 32) { setError("Nationality must be between 2 and 32 characters."); return; }
     onBusy(true); onDraft(EMPTY_CREATE_DRAFT); onClose();
     fetchNui("multichar:create", { firstname, lastname, birthdate, nationality, gender });
   };
   return <div className="modal-layer"><div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined} /><form className="modal panel create-modal" onSubmit={submit}>
-    <div className="modal-rail" /><div className="panel-heading"><div><span className="eyebrow">NEW IDENTITY</span><h3>Create character</h3></div><button type="button" className="icon-button" aria-label="Close" onClick={requestClose}><X size={16} /></button></div>
+    <div className="panel-heading"><div><span className="eyebrow">NEW IDENTITY</span><h3>Create character</h3></div><button type="button" className="icon-button" aria-label="Close" onClick={requestClose}><X size={16} /></button></div>
     <p className="modal-copy">Build the identity. You will customize appearance immediately after spawning.</p>
     <div className="field-grid"><label>First name<input name="firstname" autoFocus maxLength={24} required value={draft.firstname} onChange={(event) => setField("firstname", event.target.value)} /></label><label>Last name<input name="lastname" maxLength={24} required value={draft.lastname} onChange={(event) => setField("lastname", event.target.value)} /></label></div>
-    <div className="field-grid"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} required value={draft.birthdate} onChange={(event) => setField("birthdate", event.target.value)} /></label><label>Nationality<input name="nationality" maxLength={32} required value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)} /></label></div>
-    <div className="segmented" aria-label="Body model"><button type="button" className={draft.gender === 0 ? "active" : ""} onClick={() => { setField("gender", 0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male model</button><button type="button" className={draft.gender === 1 ? "active" : ""} onClick={() => { setField("gender", 1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female model</button></div>
+    <div className="field-grid"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} required value={draft.birthdate} onChange={(event) => setField("birthdate", event.target.value)} /></label><label>Nationality{useDropdown
+      ? <select name="nationality" required value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)}>{(nationalityList.includes(draft.nationality) ? nationalityList : [draft.nationality, ...nationalityList]).map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select>
+      : <><input name="nationality" maxLength={32} required list={nationalityList.length ? "nationality-options" : undefined} value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)} />{nationalityList.length > 0 && <datalist id="nationality-options">{nationalityList.map((entry) => <option key={entry} value={entry} />)}</datalist>}</>}</label></div>
+    <div className="segmented" aria-label="Body model"><button type="button" className={draft.gender === 0 ? "active" : ""} onClick={() => { setField("gender", 0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male</button><button type="button" className={draft.gender === 1 ? "active" : ""} onClick={() => { setField("gender", 1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female</button></div>
     {error && <p className="form-error">{error}</p>}
     {asking && <div className="discard-prompt" role="alertdialog" aria-label="Discard details"><p>Discard the identity details you entered?</p><div className="modal-actions"><button type="button" className="button ghost" onClick={keepEditing}>Keep editing</button><button type="button" className="button destructive" onClick={requestClose}>Discard</button></div></div>}
     {!asking && <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>Cancel</button><button className="button primary"><UserPlus size={16} />Create identity</button></div>}

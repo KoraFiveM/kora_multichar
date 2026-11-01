@@ -95,7 +95,33 @@ Config.ui = {
     -- shown by the game's embedded browser and answers "no", which left the
     -- dialog impossible to close once any name was typed. false closes at once.
     confirmDiscardOnClose = true,
+    -- Brand text shown above "Choose your story" and on the loading cover
+    -- ("<brand> · CINEMATIC"). Set it to your server or framework name.
+    brandName = 'Kora',
+    -- Shows a "NEW" badge on the "Available character slot" card.
+    showNewSlotBadge = false,
 }
+
+-- Nationality choices on the Create Identity form. The form shows a dropdown of
+-- these entries and the server rejects any other value.
+--   Config.nationalities           : the allowed values, shown and stored as written.
+--                                    An empty list switches the form to free text.
+--   Config.defaultNationality      : the entry selected when the form opens. Falls
+--                                    back to the first entry if it is not in the list.
+--   Config.allowFreeTextNationality: true = keep the free-text field (the list is
+--                                    offered as suggestions) and accept any 2-32
+--                                    character value.
+Config.nationalities = {
+    'Argentine', 'Australian', 'Austrian', 'Belgian', 'Brazilian', 'British', 'Bulgarian', 'Canadian',
+    'Chilean', 'Chinese', 'Colombian', 'Croatian', 'Czech', 'Danish', 'Dutch', 'Egyptian', 'Estonian',
+    'Filipino', 'Finnish', 'French', 'German', 'Greek', 'Hungarian', 'Icelandic', 'Indian', 'Irish',
+    'Israeli', 'Italian', 'Jamaican', 'Japanese', 'Korean', 'Latvian', 'Lithuanian', 'Mexican',
+    'Moroccan', 'New Zealander', 'Nigerian', 'Norwegian', 'Pakistani', 'Peruvian', 'Polish',
+    'Portuguese', 'Romanian', 'Russian', 'Saudi', 'Serbian', 'Singaporean', 'Slovak', 'South African',
+    'Spanish', 'Swedish', 'Swiss', 'Thai', 'Turkish', 'Ukrainian', 'American', 'Venezuelan', 'Vietnamese',
+}
+Config.defaultNationality = 'American'
+Config.allowFreeTextNationality = false
 
 -- Custom static scenes may be added here. scenes.lua merges the six bundled
 -- defaults without overwriting an explicitly configured id.

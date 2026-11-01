@@ -44,6 +44,14 @@ build` from the `web` directory.
   date, male/female freemode body model, and nationality. kora_core validates and
   normalizes these again server-side; slot, phone, starting job/gang, and money
   are never client-selected.
+- Nationality is a dropdown of `Config.nationalities`; `Config.defaultNationality`
+  is preselected and the server (`qbmultichar:server:validateNationality`)
+  rejects values outside the list. Set `Config.allowFreeTextNationality = true`
+  (or an empty list) for a free-text field. `Config.ui.brandName` (default
+  `Kora`) sets the brand text and `Config.ui.showNewSlotBadge` (default off)
+  shows the NEW badge on the free slot. The UI font is Onest, bundled in
+  `web/src/fonts` (SIL OFL 1.1, licence alongside); override `--font-sans` in
+  `web/src/styles.css` to change it.
 - Spawn choice is mandatory after an existing character loads. Fixed, last,
   and future property locations all use streamed live cameras. The first view
   stays covered while it loads; subsequent choices lift from the current shot,

@@ -41,6 +41,31 @@ Config.ui.confirmDiscardOnClose = Kora.config.boolean(Config.ui.confirmDiscardOn
     label = 'Confirm before discarding Create Identity details',
     description = 'When enabled, closing the Create Identity dialog with the close button, Cancel or Escape after typing asks "Discard?" inside the dialog first. When disabled it closes immediately and the typed details are cleared. Applies the next time character select opens.',
 })
+Config.ui.brandName = Kora.config.string(Config.ui.brandName, {
+    live = true, minLength = 1, maxLength = 32,
+    label = 'Brand name',
+    description = 'The brand text shown above "Choose your story" and on the loading cover. Applies the next time character select opens.',
+})
+Config.ui.showNewSlotBadge = Kora.config.boolean(Config.ui.showNewSlotBadge, {
+    live = true,
+    label = 'Show NEW badge on the free character slot',
+    description = 'When enabled, the "Available character slot" card carries a NEW badge. Off by default. Applies the next time character select opens.',
+})
+Config.nationalities = Kora.config.list(Config.nationalities, Kora.config.string('', { minLength = 2, maxLength = 32 }), {
+    live = true,
+    label = 'Nationality choices',
+    description = 'The nationalities offered in the Create Identity dropdown. The server rejects a created character whose nationality is not in this list. An empty list turns the field into free text. Applies the next time character select opens.',
+})
+Config.defaultNationality = Kora.config.string(Config.defaultNationality, {
+    live = true, maxLength = 32,
+    label = 'Default nationality',
+    description = 'The nationality selected when Create Identity opens. If it is not in the nationality list the first list entry is used. Applies the next time character select opens.',
+})
+Config.allowFreeTextNationality = Kora.config.boolean(Config.allowFreeTextNationality, {
+    live = true,
+    label = 'Allow free-text nationality',
+    description = 'When enabled, players type their nationality (the list is offered as suggestions) and the server accepts any 2 to 32 character value. When disabled the dropdown is the only way to choose and the server rejects values outside the list. Applies the next time character select opens.',
+})
 Config.buckets.enabled = Kora.config.boolean(Config.buckets.enabled, {
     live = true,
     label = 'Isolate character select in a personal routing bucket',
