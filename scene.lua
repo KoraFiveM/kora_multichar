@@ -113,25 +113,15 @@ local function revealWorld(generation)
     if generation == state.sceneGeneration then DoScreenFadeIn(350) end
 end
 
--- --- world streaming -------------------------------------------------------
---
 -- The streamer loads the map around the LOCAL PLAYER PED, and only weakly
--- around a bare focus position. This used to call SetFocusPosAndVel and then
--- wait on a load scene while the ped stayed wherever it happened to be --
--- often the far side of the map -- which is why previews were slow, frequently
--- gave up, and showed a black world when they did not: nothing had actually
--- streamed at the camera.
+-- around a bare focus position. The ped is already frozen, invisible and
+-- collision-free during cinematic mode (see hidePlayerPed), so parking it at the
+-- preview point makes it the streamer's primary anchor. beginMode records where
+-- it started and endMode restores it, so a disconnect mid-selection does not
+-- persist a preview coordinate.
 --
--- The ped is already frozen, invisible and collision-free for the whole
--- cinematic mode (see hidePlayerPed), so moving it to the preview point costs
--- nothing visually and turns a weak hint into the streamer's primary anchor.
--- beginMode records where it started and endMode puts it back, so a player who
--- disconnects mid-selection does not persist a preview coordinate as their
--- position -- a real spawn overwrites it anyway.
---
--- The load scene is kept, but only as an accelerant. It is a HINT, not a gate:
--- on a cold client it regularly never reports itself loaded, and gating the
--- preview on it is what produced the blackout-then-error.
+-- The load scene is only an accelerant, not a gate: on a cold client it
+-- regularly never reports itself loaded.
 local STREAM_START_RETRY_MS = 250
 local STREAM_START_WINDOW_MS = 1000
 
@@ -819,13 +809,9 @@ end
 ---camera at it. Used for the first preview of a session, and whenever the
 ---cinematic flight cannot continue from the camera it has.
 ---
----The player is always shown the place they PICKED. There used to be a
----"the streamer refused this destination" branch that diverted to a safe city
----spawn -- which is the "That area would not load, settling on a safe spot"
----panel players were seeing. It is gone: the ped is parked at the destination
----(see streamWorld), so the area does load, and the only question is whether it
----has finished by the time the camera arrives. A few props popping in late is a
----far better answer than showing someone a location they did not choose.
+---The player is always shown the place they picked, never a fallback spawn:
+---the ped is parked at the destination (see streamWorld), and late-popping
+---props are better than showing a location they did not choose.
 ---@param location table
 ---@param generation integer
 local function staticSpawnPreview(location, generation)

@@ -115,14 +115,10 @@ export function App() {
         setPreviewing(false); setSceneName(payload.scene || "");
         if (payload.ok === false && payload.error) setToast(payload.error);
       } else if (action === "multichar:spawn:previewLive") {
-        // The spawn camera is live and looking at the place. Drop the cover
-        // NOW rather than waiting for the focus callback to answer: that
-        // answer only arrives once the whole preview has settled, and the NUI
-        // races it against a timeout derived from the real worst case (over a
-        // minute). Waiting for it sat the player on a loading panel with a
-        // finished camera behind it -- the "stuck on Scouting your arrival"
-        // report. The callback still resolves later and still decides whether
-        // a failure is worth a toast.
+        // Camera is live: drop the cover now rather than waiting for the focus
+        // callback, which only answers once the whole preview has settled
+        // (over a minute worst case). The callback still decides whether a
+        // failure is worth a toast.
         spawnCameraReady.current = true;
         spawnPreviewLiveSeq.current += 1;
         setPreviewing(false);

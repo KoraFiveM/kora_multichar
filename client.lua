@@ -33,17 +33,12 @@ local function fallbackModel(character)
         and 'mp_f_freemode_01' or 'mp_m_freemode_01'
 end
 
--- Character select boots on a client that is at its coldest, and every step of
--- it is a cross-resource callback with a bounded timeout. A machine that takes
--- a long time to join can blow through that timeout while the server is
--- answering perfectly well, and a rejected round trip is indistinguishable at
--- the call site from a refusal: it just comes back nil. Previously that meant
--- one printed line and a player left staring at a frozen, invisible ped with
--- no UI -- or, worse, an empty scene catalog, which makes EVERY preview fail
--- with 'no matching scene'. That is what "scenes aren't loading" looks like
--- from the player's side, and nothing on screen said so.
---
--- So every boot callback retries, and every give-up says which step died.
+-- Character select boots on a cold client, and every step is a cross-resource
+-- callback with a bounded timeout. A slow join can exceed it while the server
+-- answers fine, and a timed-out round trip comes back nil, indistinguishable
+-- from a refusal. An empty scene catalog makes EVERY preview fail with
+-- 'no matching scene'. So every boot callback retries, and every give-up says
+-- which step died.
 local BOOT_RETRY_MS = 2000
 local BOOT_MAX_ATTEMPTS = 8
 
