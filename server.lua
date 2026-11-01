@@ -224,6 +224,21 @@ if Config.logout.enabled then
     })
 end
 
+-- Stock /closeNUI: asks the caller's own client to drop a stuck selection NUI.
+-- Refused during a cinematic session, which owns the routing bucket and camera.
+Kora.commands.add('closeNUI', 'Close the character selection screen if it is stuck', nil, false, function(src)
+    if sessions[src] then
+        Kora.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
+        return
+    end
+    TriggerClientEvent('qb-multicharacter:client:closeNUI', src)
+end)
+
+-- Stock reads a server_logs table that kora has no equivalent of.
+Kora.callback.register('qb-multicharacter:server:GetServerLogs', function()
+    return {}
+end)
+
 AddEventHandler('playerDropped', function()
     sessions[source] = nil
 end)

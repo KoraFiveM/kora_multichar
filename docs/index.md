@@ -403,7 +403,14 @@ the established callbacks/events, including:
 'qb-spawn:server:getOwnedHouses'
 'qb-spawn:client:setupSpawns'
 'qb-spawn:client:openUI'
+'qb-multicharacter:server:GetServerLogs'  -- always {}
 ```
+
+`/closeNUI` is registered (refused during a cinematic session). `qb-spawn:client:setupSpawns(cData, true, apps)`
+builds the carousel from the qb-apartments location list; choosing one fires stock
+`apartments:server:CreateApartment`. While `qb-apartments` is started, a returning player's
+`setupSpawns(cData, false)` is first routed through `apartments:client:setupSpawnUI` (5s timeout back
+to the normal picker); without it nothing is emitted.
 
 kora_clothing protects preview appearance reads with kora_core ownership checks,
 soft-delete filtering, sanitization, rate limiting, and a per-selection cache.

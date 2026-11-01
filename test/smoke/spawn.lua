@@ -33,6 +33,7 @@ _G.RegisterNetEvent = function(name, handler) netHandlers[name] = handler end
 _G.RegisterNUICallback = function() end
 _G.SendNUIMessage = function(payload) nuiMessages[#nuiMessages + 1] = payload end
 local ownedHouses = {}
+_G.GetResourceState = function() return 'missing' end
 _G.Kora = { callback = { trigger = function() return ownedHouses end } }
 dofile(root .. 'spawn.lua')
 
@@ -157,6 +158,98 @@ H.test('a superseded preview is reported as a distinct, benign reason', function
     -- The NUI keys its silence off this exact value; a rename here without a
     -- rename there brings back a failure toast per abandoned preview.
     H.equal(SceneRuntime.PREVIEW_SUPERSEDED, 'superseded', 'the cancellation reason is part of the NUI contract')
+end)
+
+------------------------------------------------------------------------------
+-- qb-apartments handoff
+------------------------------------------------------------------------------
+
+local apartmentsState, triggered, serverEvents = 'missing', {}, {}
+local timeouts = {}
+_G.GetResourceState = function() return apartmentsState end
+_G.TriggerEvent = function(name, ...) triggered[#triggered + 1] = { name = name, args = { ... } } end
+_G.TriggerServerEvent = function(name, ...) serverEvents[#serverEvents + 1] = { name = name, args = { ... } } end
+_G.SetTimeout = function(_, fn) timeouts[#timeouts + 1] = fn end
+local nuiCallbacks = {}
+_G.RegisterNUICallback = function(name, fn) nuiCallbacks[name] = fn end
+_G.SetNuiFocus = function() end
+_G.SceneRuntime = _G.SceneRuntime or {}
+_G.multicharSetClientMode = function() end
+local finished = {}
+_G.multicharFinishSpawn = function(coords, isNew) finished[#finished + 1] = { coords = coords, isNew = isNew } end
+Kora.callback.trigger = function(name)
+    if name == 'qbmultichar:server:enterMode' then return true end
+    return ownedHouses
+end
+dofile(root .. 'spawn.lua')
+
+local apps = {
+    apartment01 = { name = 'apartment01', label = 'South Rockford Plaza', coords = { enter = vector4(1.0, 2.0, 3.0, 4.0) } },
+    apartment02 = { name = 'apartment02', label = 'Morningwood Blvd', coords = { enter = vector4(5.0, 6.0, 7.0, 8.0) } },
+}
+
+H.test('setupSpawns new=true builds the carousel from the apartment list only', function()
+    nuiMessages = {}
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, true, apps)
+    local payload = nuiMessages[#nuiMessages]
+    H.equal(payload.data.isNew, true, 'flagged as new')
+    H.equal(#payload.data.locations, 2, 'only apartments are offered')
+    H.equal(payload.data.locations[1].apartmentType, 'apartment02', 'sorted by label')
+    H.equal(payload.data.locations[2].typeLoc, 'apartment', 'apartment typeLoc')
+end)
+
+H.test('setupSpawns new=true without usable apps falls back to the default locations', function()
+    nuiMessages = {}
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, true, nil)
+    H.truthy(#nuiMessages[#nuiMessages].data.locations >= 1, 'defaults offered')
+end)
+
+H.test('choosing an apartment creates it through qb-apartments and finishes as a new character', function()
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, true, apps)
+    apartmentsState = 'started'
+    serverEvents, finished = {}, {}
+    nuiCallbacks['multichar:spawn:choose']({ id = 'apartment:apartment01' }, function() end)
+    H.equal(serverEvents[1].name, 'apartments:server:CreateApartment', 'stock event')
+    H.equal(serverEvents[1].args[1], 'apartment01', 'type')
+    H.equal(serverEvents[1].args[3], true, 'firstSpawn')
+    H.equal(finished[1].isNew, true, 'new-character completion')
+    apartmentsState = 'missing'
+    serverEvents = {}
+    nuiCallbacks['multichar:spawn:choose']({ id = 'apartment:apartment01' }, function() end)
+    H.equal(#serverEvents, 0, 'no apartment creation when qb-apartments is not running')
+end)
+
+H.test('setupSpawnUI is routed only when qb-apartments is started, and openUI waits for it', function()
+    apartmentsState = 'missing'
+    triggered, nuiMessages = {}, {}
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, false, nil)
+    H.equal(#triggered, 0, 'no apartments event without the resource')
+    H.equal(nuiMessages[#nuiMessages].action, 'multichar:spawn:locations', 'locations published directly')
+
+    apartmentsState = 'started'
+    triggered, nuiMessages, timeouts = {}, {}, {}
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, false, nil)
+    H.equal(triggered[1].name, 'apartments:client:setupSpawnUI', 'routed through qb-apartments')
+    H.equal(#nuiMessages, 0, 'nothing published until apartments answers')
+    netHandlers['qb-spawn:client:openUI'](true)
+    H.equal(#nuiMessages, 0, 'openUI is held while apartments decides')
+
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, false, nil)
+    H.equal(nuiMessages[#nuiMessages].action, 'multichar:spawn:locations', 'apartments answer publishes locations')
+    timeouts[1]()
+    H.equal(nuiMessages[#nuiMessages].action, 'multichar:spawn:locations', 'stale timeout is a no-op')
+end)
+
+H.test('an unanswered apartments handoff times out into the default spawn picker', function()
+    apartmentsState = 'started'
+    nuiMessages, timeouts = {}, {}
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, false, nil)
+    timeouts[1]()
+    local actions = {}
+    for _, message in ipairs(nuiMessages) do actions[#actions + 1] = message.action end
+    H.equal(actions[1], 'multichar:spawn:locations', 'fallback publishes locations')
+    H.equal(actions[2], 'multichar:spawn:show', 'fallback opens the picker')
+    apartmentsState = 'missing'
 end)
 
 H.report('spawn')

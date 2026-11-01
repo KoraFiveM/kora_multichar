@@ -26,17 +26,17 @@ end
 -- property. Both of the sources this reads used to be walked with `pairs`, so
 -- the carousel came out in a different order on every client and nothing could
 -- refer to "the first location" and mean it.
-local function buildLocations(cData, houses, isNew)
+local function buildLocations(cData, houses, isNew, apartments)
     spawnLocations, spawnById = {}, {}
     local current = isNew and Config.defaultSpawn or (cData and normalizeCoords(cData.position))
-    if current then
+    if current and not apartments then
         addLocation({
             id = 'current', typeLoc = 'current', label = isNew and 'First Arrival' or 'Last Location',
             description = isNew and 'Begin your new story at the city welcome point.' or 'Return to the exact place this character was last seen.',
             coords = current,
         })
     end
-    for _, configured in ipairs(Config.spawns) do
+    for _, configured in ipairs(apartments and {} or Config.spawns) do
         addLocation({
             id = configured.id, typeLoc = 'normal', spawnloc = configured.id,
             label = configured.label or configured.id, description = configured.description,
@@ -62,19 +62,79 @@ local function buildLocations(cData, houses, isNew)
         return a.id < b.id
     end)
     for _, house in ipairs(owned) do addLocation(house) end
+
+    -- qb-apartments hands over Apartments.Locations keyed by name; the key is
+    -- the apartment type that apartments:server:CreateApartment expects back.
+    local starting = {}
+    for key, apartment in pairs(type(apartments) == 'table' and apartments or {}) do
+        local enter = type(apartment) == 'table' and type(apartment.coords) == 'table' and apartment.coords.enter
+        local coords = normalizeCoords(enter or apartment)
+        local name = tostring(type(apartment) == 'table' and apartment.name or key)
+        if coords then
+            starting[#starting + 1] = {
+                id = ('apartment:%s'):format(name), typeLoc = 'apartment', apartmentType = name,
+                label = apartment.label or name, description = 'Start in a new apartment.', coords = coords,
+            }
+        end
+    end
+    table.sort(starting, function(a, b)
+        if a.label ~= b.label then return a.label < b.label end
+        return a.id < b.id
+    end)
+    for _, apartment in ipairs(starting) do addLocation(apartment) end
 end
 
-RegisterNetEvent('qb-spawn:client:setupSpawns', function(cData, new, _apps)
-    if new then return end
-    local houses = Kora.callback.trigger('qb-spawn:server:getOwnedHouses', cData and cData.citizenid) or {}
-    buildLocations(cData, houses, false)
+local openSpawnSelection
+local apartmentsRouted, apartmentsToken = false, 0
+local lastIsNew = false
+
+local function publishLocations(cData, isNew, apartments)
+    local houses = {}
+    if not isNew then
+        houses = Kora.callback.trigger('qb-spawn:server:getOwnedHouses', cData and cData.citizenid) or {}
+    end
+    buildLocations(cData, houses, isNew, apartments)
+    if apartments and #spawnLocations == 0 then buildLocations(cData, houses, isNew) end
+    lastIsNew = isNew
     send('multichar:spawn:locations', {
-        locations = spawnLocations, isNew = false,
+        locations = spawnLocations, isNew = isNew,
         previewBudgetMs = SceneRuntime.spawnPreviewBudgetMs(),
     })
+end
+
+local function apartmentsStarted()
+    return GetResourceState('qb-apartments') == 'started'
+end
+
+-- The core compat fires setupSpawns/openUI straight after character select. With
+-- qb-apartments running, stock hands that decision to apartments:client:setupSpawnUI,
+-- which calls back into setupSpawns (new=true plus its location list for a first-time
+-- player) and then openUI, so openUI is held until that answer arrives or times out.
+RegisterNetEvent('qb-spawn:client:setupSpawns', function(cData, new, apps)
+    if new then
+        apartmentsRouted = false
+        publishLocations(cData, true, type(apps) == 'table' and apps or nil)
+        return
+    end
+    if apartmentsStarted() and not apartmentsRouted then
+        apartmentsRouted = true
+        apartmentsToken = apartmentsToken + 1
+        local token = apartmentsToken
+        TriggerEvent('apartments:client:setupSpawnUI', cData)
+        SetTimeout(5000, function()
+            if apartmentsRouted and apartmentsToken == token then
+                apartmentsRouted = false
+                publishLocations(cData, false)
+                openSpawnSelection(false)
+            end
+        end)
+        return
+    end
+    apartmentsRouted = false
+    publishLocations(cData, false)
 end)
 
-local function openSpawnSelection(isNew)
+openSpawnSelection = function(isNew)
     local entered, err = Kora.callback.trigger('qbmultichar:server:enterMode', 'spawn')
     if not entered then
         send('multichar:error', err or 'Could not open spawn selection.')
@@ -94,7 +154,9 @@ local function openSpawnSelection(isNew)
 end
 
 RegisterNetEvent('qb-spawn:client:openUI', function(value)
-    if value == true then openSpawnSelection(false) end
+    if value ~= true then return end
+    if apartmentsRouted then return end
+    openSpawnSelection(lastIsNew)
 end)
 
 -- `reason` is what keeps the selector quiet while a player clicks through the
@@ -113,7 +175,12 @@ RegisterNUICallback('multichar:spawn:choose', function(data, cb)
     -- House spawning becomes reachable automatically when qb-houses returns
     -- coordinates. This merged resource has no house-interior handoff, so the
     -- safe compatible behavior is to land at those authoritative coordinates.
-    multicharFinishSpawn(location.coords)
+    if location.typeLoc == 'apartment' and apartmentsStarted() then
+        TriggerServerEvent('apartments:server:CreateApartment', location.apartmentType, location.label, true)
+        multicharFinishSpawn(location.coords, true)
+    else
+        multicharFinishSpawn(location.coords)
+    end
     cb({ ok = true })
 end)
 

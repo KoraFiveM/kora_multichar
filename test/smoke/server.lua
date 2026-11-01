@@ -294,4 +294,24 @@ H.test('nationality is validated against Config.nationalities', function()
     Config.nationalities, Config.allowFreeTextNationality = list, free
 end)
 
+H.test('closeNUI forwards to the caller and is refused during a cinematic session', function()
+    clientEvents = {}
+    runCommand('closeNUI', 31)
+    H.equal(#clientEvents, 1, 'closeNUI must reach the caller')
+    H.equal(clientEvents[1].name, 'qb-multicharacter:client:closeNUI', 'event name')
+    H.equal(clientEvents[1].target, 31, 'only the caller is targeted')
+
+    states[32] = { ['qbcore:loggedIn'] = false }
+    callbacks['qbmultichar:server:enterMode'](32, 'selection')
+    clientEvents = {}
+    runCommand('closeNUI', 32)
+    H.equal(#clientEvents, 0, 'closeNUI must not tear down an active session')
+end)
+
+H.test('GetServerLogs replies with an empty list', function()
+    local result = callbacks['qb-multicharacter:server:GetServerLogs'](1)
+    H.equal(type(result), 'table', 'table reply')
+    H.equal(next(result), nil, 'empty reply')
+end)
+
 H.report('server')
