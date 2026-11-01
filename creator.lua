@@ -212,8 +212,7 @@ local function moveItem(list, index, delta)
     if not index or not delta then return false end
     local destination = math.max(1, math.min(#list, index + delta))
     if destination == index or not list[index] then return false end
-    local value = table.remove(list, index)
-    table.insert(list, destination, value)
+    table.insert(list, destination, table.remove(list, index))
     return true
 end
 

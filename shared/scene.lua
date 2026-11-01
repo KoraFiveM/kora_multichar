@@ -99,7 +99,6 @@ function SceneSchema.validate(id, scene, limits)
         if selector.minGrade and selector.maxGrade and selector.minGrade > selector.maxGrade then return nil, 'selector grade range is inverted' end
     end
 
-
     local environment = scene.environment or {}
     if type(environment) ~= 'table' then return nil, 'scene environment must be a table' end
     if environment.hour ~= nil and (not finite(environment.hour) or environment.hour % 1 ~= 0 or environment.hour < 0 or environment.hour > 23) then return nil, 'environment hour must be 0-23' end
