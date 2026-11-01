@@ -235,6 +235,11 @@ local function refreshCharacters()
         ui = {
             closeCreateOnBackdrop = Config.ui.closeCreateOnBackdrop,
             confirmDiscardOnClose = Config.ui.confirmDiscardOnClose,
+            brandName = Config.ui.brandName,
+            showNewSlotBadge = Config.ui.showNewSlotBadge,
+            nationalities = Config.nationalities,
+            defaultNationality = Config.defaultNationality,
+            allowFreeTextNationality = Config.allowFreeTextNationality,
         },
     })
     -- Say it on screen rather than letting the player sit on "Loading scene..."
@@ -360,12 +365,19 @@ RegisterNUICallback('multichar:create', function(data, cb)
         cb({ ok = false }); return
     end
     data = type(data) == 'table' and data or {}
+    -- The server owns the nationality rules (Config.nationalities); it returns
+    -- the normalised value to store.
+    local nationalityOk, nationality = Kora.callback.trigger('qbmultichar:server:validateNationality', data.nationality)
+    if not nationalityOk then
+        send('multichar:error', type(nationality) == 'string' and nationality or 'Choose a valid nationality.')
+        cb({ ok = false }); return
+    end
     TriggerServerEvent('qb-multicharacter:server:createCharacter', {
         firstname = data.firstname,
         lastname = data.lastname,
         birthdate = data.birthdate,
         gender = tonumber(data.gender),
-        nationality = data.nationality,
+        nationality = nationality,
     })
     cb({ ok = true })
 end)

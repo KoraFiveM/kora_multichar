@@ -275,4 +275,23 @@ H.test('cleanup on resource stop restores isolated players', function()
     H.equal(buckets[7], 42, 'resource stop restores the previous bucket')
 end)
 
+H.test('nationality is validated against Config.nationalities', function()
+    local validate = callbacks['qbmultichar:server:validateNationality']
+    local list, free = Config.nationalities, Config.allowFreeTextNationality
+    H.truthy(#list > 0 and list[1] ~= '', 'a default list ships')
+    local ok, value = validate(7, '  ' .. list[1] .. ' ')
+    H.truthy(ok, 'a listed value is accepted'); H.equal(value, list[1], 'and trimmed')
+    H.falsy(validate(7, 'Quasar University'), 'free text is refused while a list is set')
+    H.falsy(validate(7, nil), 'non-strings are refused')
+    H.falsy(validate(7, { list[1] }), 'tables are refused')
+    Config.allowFreeTextNationality = true
+    H.truthy(validate(7, 'Quasar University'), 'free text allowed by the switch')
+    H.falsy(validate(7, 'X'), 'free text still has a length floor')
+    H.falsy(validate(7, string.rep('x', 33)), 'and a ceiling')
+    Config.allowFreeTextNationality = false
+    Config.nationalities = {}
+    H.truthy(validate(7, 'Quasar University'), 'an empty list means free text')
+    Config.nationalities, Config.allowFreeTextNationality = list, free
+end)
+
 H.report('server')

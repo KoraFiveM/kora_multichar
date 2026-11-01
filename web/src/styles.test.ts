@@ -36,3 +36,22 @@ describe("edge insets", () => {
     expect(css).toMatch(/\.dossier-heading, \.panel-heading \{ padding-right: 4px; \}/);
   });
 });
+
+describe("theme", () => {
+  it("bundles Onest locally with a fallback stack and no remote font loading", () => {
+    expect(css).toMatch(/@font-face \{ font-family: "Onest";[^}]*url\("\.\/fonts\/onest-latin-wght-normal\.woff2"\)/);
+    expect(css).toMatch(/--font-sans: "Onest", [^;]*sans-serif;/);
+    expect(css).not.toMatch(/fonts\.googleapis|fonts\.gstatic/);
+  });
+
+  it("drops the decorative accent rail, gradients and coloured glows", () => {
+    expect(css).not.toMatch(/\.identity-card::before/);
+    expect(css).not.toMatch(/gradient\(/);
+    expect(css).not.toMatch(/box-shadow: 0 0 \d/);
+  });
+
+  it("centres icon buttons without inherited padding", () => {
+    expect(css).toMatch(/\.icon-button \{[^}]*place-items: center;[^}]*padding: 0; box-sizing: border-box/);
+    expect(css).toMatch(/\.icon-button svg \{ display: block;/);
+  });
+});

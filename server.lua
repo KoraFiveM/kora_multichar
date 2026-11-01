@@ -136,6 +136,30 @@ Kora.callback.register('qbmultichar:server:leaveMode', function(src)
     return leaveMode(src)
 end, { rateLimit = { max = 8, window = 10000 } })
 
+---Checks a submitted nationality against Config.nationalities. With a list set
+---and Config.allowFreeTextNationality off the value must be an entry of the
+---list; otherwise any 2-32 character string is accepted.
+---@param value any
+---@return boolean ok
+---@return string result the value to store, or the reason it was refused
+local function validateNationality(value)
+    if type(value) ~= 'string' then return false, 'Choose a valid nationality.' end
+    value = value:match('^%s*(.-)%s*$')
+    local list = Config.nationalities
+    if type(list) == 'table' and #list > 0 and not Config.allowFreeTextNationality then
+        for _, entry in ipairs(list) do
+            if entry == value then return true, value end
+        end
+        return false, 'Choose a nationality from the list.'
+    end
+    if #value < 2 or #value > 32 then return false, 'Nationality must be between 2 and 32 characters.' end
+    return true, value
+end
+
+Kora.callback.register('qbmultichar:server:validateNationality', function(_, value)
+    return validateNationality(value)
+end, { rateLimit = { max = 8, window = 10000 } })
+
 -- Staff gating goes through kora_lib's permission gateway rather than a rank
 -- table over kora_core's getPermission. Kora.permissions.hasLevel accepts either
 -- `kora_core.<level>` or the bare `group.<level>` principal (which is how this

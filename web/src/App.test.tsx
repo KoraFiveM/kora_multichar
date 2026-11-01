@@ -85,7 +85,7 @@ describe('character selection', () => {
     fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Rivera' } });
     fireEvent.change(screen.getByLabelText('Birth date'), { target: { value: '2001-04-25' } });
     fireEvent.change(screen.getByLabelText('Nationality'), { target: { value: 'Mexico' } });
-    fireEvent.click(screen.getByRole('button', { name: 'Female model' }));
+    fireEvent.click(screen.getByRole('button', { name: 'Female' }));
     fireEvent.click(screen.getByRole('button', { name: /create identity/i }));
 
     expect(nui.fetch).toHaveBeenCalledWith('multichar:create', {
@@ -381,7 +381,7 @@ describe('spawn and studio', () => {
     it('keeps the draft and stays usable while the model is toggled any number of times', () => {
       openCreate();
       fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'User' } });
-      for (const name of ['Female model', 'Male model', 'Female model', 'Male model']) {
+      for (const name of ['Female', 'Male', 'Female', 'Male']) {
         fireEvent.click(screen.getByRole('button', { name }));
         expect(document.querySelector('.scene-transition')).toBeNull();
         expect((screen.getByLabelText('First name') as HTMLInputElement).value).toBe('Alex');
@@ -401,7 +401,7 @@ describe('spawn and studio', () => {
       fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
       message('multichar:previewLoading', { citizenid: 'new' });
       expect(document.querySelector('.scene-transition')).toBeNull();
-      fireEvent.click(screen.getByRole('button', { name: 'Female model' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Female' }));
     });
 
     it('closes without a prompt when the form is untouched', () => {
@@ -416,5 +416,66 @@ describe('spawn and studio', () => {
       expect(screen.queryByLabelText('First name')).toBeNull();
       confirm.mockRestore();
     });
+  });
+});
+
+describe('branding, theme and nationality', () => {
+  const openCreateWith = (ui?: Record<string, unknown>, characters: unknown[] = []) => {
+    render(<App />);
+    message('multichar:show', { characters, maxCharacters: 3, ui });
+    act(() => vi.advanceTimersByTime(121));
+    message('multichar:previewReady', { scene: 'civilian', ok: true });
+  };
+
+  it('shows the configured brand, defaulting to Kora, and never QBCORE', () => {
+    openCreateWith();
+    expect(document.querySelector('.brand-mark')!.textContent).toBe('Kora');
+    cleanup();
+    openCreateWith({ brandName: 'Aurora' });
+    expect(document.querySelector('.brand-mark')!.textContent).toBe('Aurora');
+    expect(document.body.textContent).not.toMatch(/qbcore/i);
+  });
+
+  it('hides the NEW badge on the free slot unless the flag is on', () => {
+    openCreateWith();
+    expect(document.querySelector('.new-slot-chip')).toBeNull();
+    cleanup();
+    openCreateWith({ showNewSlotBadge: true });
+    expect(document.querySelector('.new-slot-chip')!.textContent).toBe('NEW');
+  });
+
+  it('renders no decorative accent rail in the create dialog', () => {
+    openCreateWith();
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    expect(document.querySelector('.create-modal .modal-rail')).toBeNull();
+  });
+
+  it('offers the configured nationalities in a select and submits the choice', () => {
+    openCreateWith({ nationalities: ['Canadian', 'Mexican', 'American'], defaultNationality: 'Mexican' });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    const select = screen.getByLabelText('Nationality') as HTMLSelectElement;
+    expect(select.tagName).toBe('SELECT');
+    expect(Array.from(select.options).map((option) => option.value)).toEqual(['Canadian', 'Mexican', 'American']);
+    expect(select.value).toBe('Mexican');
+    fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Alex' } });
+    fireEvent.change(screen.getByLabelText('Last name'), { target: { value: 'Rivera' } });
+    fireEvent.change(select, { target: { value: 'Canadian' } });
+    fireEvent.click(screen.getByRole('button', { name: /create identity/i }));
+    expect(nui.fetch).toHaveBeenCalledWith('multichar:create', expect.objectContaining({ nationality: 'Canadian' }));
+  });
+
+  it('falls back to the first entry when the default is not in the list', () => {
+    openCreateWith({ nationalities: ['Canadian', 'Mexican'], defaultNationality: 'Atlantean' });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    expect((screen.getByLabelText('Nationality') as HTMLSelectElement).value).toBe('Canadian');
+  });
+
+  it('keeps a free-text field when the config allows it', () => {
+    openCreateWith({ nationalities: ['Canadian'], allowFreeTextNationality: true, defaultNationality: 'Canadian' });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    const field = screen.getByLabelText('Nationality') as HTMLInputElement;
+    expect(field.tagName).toBe('INPUT');
+    fireEvent.change(field, { target: { value: 'Quasar' } });
+    expect(field.value).toBe('Quasar');
   });
 });
