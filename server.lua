@@ -132,9 +132,7 @@ Kora.callback.register('qbmultichar:server:enterMode', function(src, mode)
     return enterMode(src, mode)
 end, { rateLimit = { max = 8, window = 10000 } })
 
-Kora.callback.register('qbmultichar:server:leaveMode', function(src)
-    return leaveMode(src)
-end, { rateLimit = { max = 8, window = 10000 } })
+Kora.callback.register('qbmultichar:server:leaveMode', leaveMode, { rateLimit = { max = 8, window = 10000 } })
 
 ---Checks a submitted nationality against Config.nationalities. With a list set
 ---and Config.allowFreeTextNationality off the value must be an entry of the
