@@ -72,7 +72,8 @@ H.test('staff logout is permission-gated and travels on the replicated login sta
         'logout must not push character select; the client follows qbcore:loggedIn')
     H.truthy(client:find("AddStateBagChangeHandler('qbcore:loggedIn'", 1, true),
         'the client returns to selection by following the replicated login state')
-    H.truthy(client:find('while not serverId or serverId == -1 do', 1, true),
+    H.truthy(client:find("Kora.cache.onChange('serverId', try)", 1, true)
+        and client:find('if done or not serverId or serverId == -1 then return end', 1, true),
         'the login-state bag must wait for kora_lib to resolve its stable server id')
     H.truthy(client:find('if returningToSelection or currentMode ~= nil then return end', 1, true),
         'the return must not re-enter selection or fight an active cinematic mode')

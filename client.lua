@@ -425,21 +425,43 @@ local function awaitStablePlayerPed()
     print('^3[qbmultichar]^7 player ped never settled; opening selection anyway.')
 end
 
+-- Runs `callback(serverId)` once kora_lib's cache holds a real server id (not
+-- the -1 startup sentinel). Event-driven instead of a per-frame export poll;
+-- re-registered when kora_lib restarts, since its onChange listeners do not
+-- survive that, and seeded from the current value because onChange only fires
+-- on a change.
+local function whenServerIdReady(callback)
+    local done = false
+    local function try(serverId)
+        if done or not serverId or serverId == -1 then return end
+        done = true
+        Kora.cache.offChange('serverId')
+        -- Leave kora_lib's handler context before touching state bags/events.
+        CreateThread(function() callback(serverId) end)
+    end
+    local function watch()
+        if done then return end
+        Kora.cache.onChange('serverId', try)
+        try(Kora.cache.serverId())
+    end
+    AddEventHandler('onClientResourceStart', function(resource)
+        if resource == 'kora_lib' then watch() end
+    end)
+    watch()
+end
+
 CreateThread(function()
     awaitStablePlayerPed()
-    local serverId = Kora.cache.serverId()
-    while not serverId or serverId == -1 do
-        Wait(0)
-        serverId = Kora.cache.serverId()
-    end
-    -- Registered here, not at file scope: the bag name needs a real server id,
-    -- which only exists once the session has started.
-    AddStateBagChangeHandler('qbcore:loggedIn', ('player:%s'):format(serverId), function(_, _, value)
-        -- State-bag handlers must not yield; returnToCharacterSelect waits on
-        -- the fade and on server callbacks.
-        if value == false then CreateThread(returnToCharacterSelect) end
+    whenServerIdReady(function(serverId)
+        -- Registered here, not at file scope: the bag name needs a real server id,
+        -- which only exists once the session has started.
+        AddStateBagChangeHandler('qbcore:loggedIn', ('player:%s'):format(serverId), function(_, _, value)
+            -- State-bag handlers must not yield; returnToCharacterSelect waits on
+            -- the fade and on server callbacks.
+            if value == false then CreateThread(returnToCharacterSelect) end
+        end)
+        TriggerEvent('qb-multicharacter:client:chooseChar')
     end)
-    TriggerEvent('qb-multicharacter:client:chooseChar')
 end)
 
 AddEventHandler('onClientResourceStop', function(resource)
