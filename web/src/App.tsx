@@ -416,6 +416,20 @@ function Dossier({ character, profile, onClose, onDelete }: { character: Charact
   </aside>;
 }
 
+type CreateField = "firstname" | "lastname" | "birthdate" | "nationality";
+type CreateErrors = Partial<Record<CreateField, string>>;
+
+// The NUI has no locale table; every UI string is a literal, so the
+// validation messages live together here for easy translation.
+const CREATE_MESSAGES = {
+  firstnameRequired: "Enter a first name.",
+  lastnameRequired: "Enter a last name.",
+  nameLength: "Names must be between 1 and 24 characters.",
+  birthdate: "Enter a real, non-future birth date.",
+  nationalityList: "Choose a nationality from the list.",
+  nationalityLength: "Nationality must be between 2 and 32 characters.",
+};
+
 type CreateDraft = { firstname: string; lastname: string; birthdate: string; nationality: string; gender: number };
 
 // The configured default wins when it is selectable (or when free text is
@@ -428,12 +442,16 @@ function emptyCreateDraft(ui: UiSettings): CreateDraft {
 }
 
 function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onClose, onBusy }: { ui: UiSettings; draft: CreateDraft; onDraft: (draft: CreateDraft) => void; closeOnBackdrop: boolean; confirmDiscard: boolean; onClose: () => void; onBusy: (value: boolean) => void }) {
-  const [error, setError] = useState("");
+  const [errors, setErrors] = useState<CreateErrors>({});
+  const formRef = useRef<HTMLFormElement>(null);
   const EMPTY_CREATE_DRAFT = useMemo(() => emptyCreateDraft(ui), [ui]);
   const nationalityList = ui.nationalities;
   const useDropdown = nationalityList.length > 0 && !ui.allowFreeTextNationality;
   const dirty = draft.firstname !== "" || draft.lastname !== "" || draft.birthdate !== EMPTY_CREATE_DRAFT.birthdate || draft.nationality !== EMPTY_CREATE_DRAFT.nationality;
-  const setField = (field: keyof CreateDraft, value: string | number) => onDraft({ ...draft, [field]: value });
+  const setField = (field: keyof CreateDraft, value: string | number) => {
+    if (field in errors) setErrors(({ [field as CreateField]: _cleared, ...rest }) => rest);
+    onDraft({ ...draft, [field]: value });
+  };
   // X, Cancel and Escape are deliberate, so they ask before discarding typed data.
   // The question is drawn in the page: the game's browser does not show
   // window.confirm() and answers "no", which made X, Cancel and Escape do
@@ -465,25 +483,44 @@ function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onC
     const birthdate = draft.birthdate;
     const nationality = draft.nationality.trim();
     const gender = draft.gender;
-    if (!firstname || firstname.length > 24 || !lastname || lastname.length > 24) { setError("Names must be between 1 and 24 characters."); return; }
-    if (!isValidBirthdate(birthdate)) { setError("Enter a real, non-future birth date."); return; }
-    if (useDropdown && !nationalityList.includes(nationality)) { setError("Choose a nationality from the list."); return; }
-    if (nationality.length < 2 || nationality.length > 32) { setError("Nationality must be between 2 and 32 characters."); return; }
+    const found: CreateErrors = {};
+    if (!firstname) found.firstname = CREATE_MESSAGES.firstnameRequired;
+    else if (firstname.length > 24) found.firstname = CREATE_MESSAGES.nameLength;
+    if (!lastname) found.lastname = CREATE_MESSAGES.lastnameRequired;
+    else if (lastname.length > 24) found.lastname = CREATE_MESSAGES.nameLength;
+    if (!isValidBirthdate(birthdate)) found.birthdate = CREATE_MESSAGES.birthdate;
+    if (useDropdown && !nationalityList.includes(nationality)) found.nationality = CREATE_MESSAGES.nationalityList;
+    else if (nationality.length < 2 || nationality.length > 32) found.nationality = CREATE_MESSAGES.nationalityLength;
+    const first = (["firstname", "lastname", "birthdate", "nationality"] as const).find((field) => found[field]);
+    if (first) {
+      setErrors(found);
+      (formRef.current?.elements.namedItem(first) as HTMLElement | null)?.focus();
+      return;
+    }
     onBusy(true); onDraft(EMPTY_CREATE_DRAFT); onClose();
     fetchNui("multichar:create", { firstname, lastname, birthdate, nationality, gender });
   };
-  return <div className="modal-layer"><div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined} /><form className="modal panel create-modal" onSubmit={submit}>
+  return <div className="modal-layer"><div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined} /><form ref={formRef} noValidate className="modal panel create-modal" onSubmit={submit}>
     <div className="panel-heading"><div><span className="eyebrow">NEW IDENTITY</span><h3>Create character</h3></div><button type="button" className="icon-button" aria-label="Close" onClick={requestClose}><X size={16} /></button></div>
     <p className="modal-copy">Build the identity. You will customize appearance immediately after spawning.</p>
-    <div className="field-grid"><label>First name<input name="firstname" autoFocus maxLength={24} required value={draft.firstname} onChange={(event) => setField("firstname", event.target.value)} /></label><label>Last name<input name="lastname" maxLength={24} required value={draft.lastname} onChange={(event) => setField("lastname", event.target.value)} /></label></div>
-    <div className="field-grid"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} required value={draft.birthdate} onChange={(event) => setField("birthdate", event.target.value)} /></label><label>Nationality{useDropdown
-      ? <select name="nationality" required value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)}>{(nationalityList.includes(draft.nationality) ? nationalityList : [draft.nationality, ...nationalityList]).map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select>
-      : <><input name="nationality" maxLength={32} required list={nationalityList.length ? "nationality-options" : undefined} value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)} />{nationalityList.length > 0 && <datalist id="nationality-options">{nationalityList.map((entry) => <option key={entry} value={entry} />)}</datalist>}</>}</label></div>
+    <div className="field-grid">
+      <div className="field"><label>First name<input name="firstname" autoFocus maxLength={24} required aria-invalid={!!errors.firstname} aria-describedby={errors.firstname ? "create-firstname-error" : undefined} value={draft.firstname} onChange={(event) => setField("firstname", event.target.value)} /></label><FieldError id="create-firstname-error" message={errors.firstname} /></div>
+      <div className="field"><label>Last name<input name="lastname" maxLength={24} required aria-invalid={!!errors.lastname} aria-describedby={errors.lastname ? "create-lastname-error" : undefined} value={draft.lastname} onChange={(event) => setField("lastname", event.target.value)} /></label><FieldError id="create-lastname-error" message={errors.lastname} /></div>
+    </div>
+    <div className="field-grid">
+      <div className="field"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} required aria-invalid={!!errors.birthdate} aria-describedby={errors.birthdate ? "create-birthdate-error" : undefined} value={draft.birthdate} onChange={(event) => setField("birthdate", event.target.value)} /></label><FieldError id="create-birthdate-error" message={errors.birthdate} /></div>
+      <div className="field"><label>Nationality{useDropdown
+        ? <select name="nationality" required aria-invalid={!!errors.nationality} aria-describedby={errors.nationality ? "create-nationality-error" : undefined} value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)}>{(nationalityList.includes(draft.nationality) ? nationalityList : [draft.nationality, ...nationalityList]).map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select>
+        : <><input name="nationality" maxLength={32} required aria-invalid={!!errors.nationality} aria-describedby={errors.nationality ? "create-nationality-error" : undefined} list={nationalityList.length ? "nationality-options" : undefined} value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)} />{nationalityList.length > 0 && <datalist id="nationality-options">{nationalityList.map((entry) => <option key={entry} value={entry} />)}</datalist>}</>}</label><FieldError id="create-nationality-error" message={errors.nationality} /></div>
+    </div>
     <div className="segmented" aria-label="Body model"><button type="button" className={draft.gender === 0 ? "active" : ""} onClick={() => { setField("gender", 0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male</button><button type="button" className={draft.gender === 1 ? "active" : ""} onClick={() => { setField("gender", 1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female</button></div>
-    {error && <p className="form-error">{error}</p>}
     {asking && <div className="discard-prompt" role="alertdialog" aria-label="Discard details"><p>Discard the identity details you entered?</p><div className="modal-actions"><button type="button" className="button ghost" onClick={keepEditing}>Keep editing</button><button type="button" className="button destructive" onClick={requestClose}>Discard</button></div></div>}
     {!asking && <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>Cancel</button><button className="button primary"><UserPlus size={16} />Create identity</button></div>}
   </form></div>;
+}
+
+function FieldError({ id, message }: { id: string; message?: string }) {
+  return message ? <small id={id} className="field-error" role="alert">{message}</small> : null;
 }
 
 function DeleteDialog({ character, onClose, onBusy }: { character: Character; onClose: () => void; onBusy: (value: boolean) => void }) {

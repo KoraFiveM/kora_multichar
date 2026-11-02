@@ -105,6 +105,9 @@ textarea { resize: vertical; }
 .segmented { display: grid; grid-template-columns: 1fr 1fr; gap: 4px; margin-top: 3px; border: 1px solid hsl(var(--border)); border-radius: 9px; padding: 4px; background: hsl(var(--background) / .8); }
 .segmented button { height: 34px; border: 1px solid transparent; border-radius: 6px; background: transparent; color: hsl(var(--muted-foreground)); cursor: pointer; font-size: 11px; font-weight: 700; }.segmented button.active { border-color: hsl(var(--brand-border)); background: hsl(var(--brand-soft)); color: hsl(var(--foreground)); }
 .modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 18px; }
+.field { display: flex; flex-direction: column; margin-bottom: 10px; min-width: 0; }.field > label { margin-bottom: 0; }
+.field-error { margin-top: 5px; color: hsl(var(--destructive)); font-size: 10px; font-weight: 600; letter-spacing: normal; text-transform: none; }
+input[aria-invalid="true"], select[aria-invalid="true"] { border-color: hsl(var(--destructive)); }
 .form-error { margin: 10px 0 0; color: hsl(var(--destructive)); font-size: 11px; }
 .mandatory-chip { border: 1px solid hsl(var(--brand-border)); border-radius: 999px; padding: 6px 10px; background: hsl(var(--brand-soft)); color: hsl(var(--primary)); font-size: 9px; font-weight: 800; letter-spacing: .08em; text-transform: uppercase; }
 .travel-indicator { position: absolute; z-index: 3; top: 30px; left: 50%; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); border: 1px solid hsl(var(--brand-border)); border-radius: 999px; padding: 7px 12px; background: hsl(var(--card)); box-shadow: var(--shadow-soft); color: hsl(var(--muted-foreground)); font-size: 10px; letter-spacing: .025em; }

@@ -350,6 +350,25 @@ describe('spawn and studio', () => {
       fireEvent.change(screen.getByLabelText('First name'), { target: { value: 'Alex' } });
     }
 
+    it('shows an inline error instead of the native bubble when the first name is empty', () => {
+      openCreate();
+      fireEvent.change(screen.getByLabelText('First name'), { target: { value: '' } });
+      nui.fetch.mockClear();
+      expect(document.querySelector<HTMLFormElement>('.create-modal')!.noValidate).toBe(true);
+      fireEvent.click(screen.getByRole('button', { name: /create identity/i }));
+      const input = screen.getByLabelText('First name') as HTMLInputElement;
+      const alert = document.getElementById('create-firstname-error')!;
+      expect(alert.getAttribute('role')).toBe('alert');
+      expect(alert.textContent).toBe('Enter a first name.');
+      expect(input.getAttribute('aria-invalid')).toBe('true');
+      expect(input.getAttribute('aria-describedby')).toBe(alert.id);
+      expect(document.activeElement).toBe(input);
+      expect(nui.fetch).not.toHaveBeenCalledWith('multichar:create', expect.anything());
+      fireEvent.change(input, { target: { value: 'A' } });
+      expect(document.getElementById('create-firstname-error')).toBeNull();
+      expect(input.getAttribute('aria-invalid')).toBe('false');
+    });
+
     it('ignores backdrop clicks by default', () => {
       openCreate();
       fireEvent.click(document.querySelector('.modal-backdrop')!);
