@@ -154,6 +154,19 @@ local function announceSpawnComplete(isNew)
     end)
 end
 
+-- A new character must not wear the previous character's clothes (the ped is
+-- reused across characters). kora_clothing owns appearance, so ask it to dress
+-- the ped in its starter outfit; its fitting room then opens on that look.
+-- Skipped when disabled or when kora_clothing is not running.
+local function resetNewCharacterAppearance()
+    if Config.newCharacter and Config.newCharacter.resetAppearance == false then return end
+    if GetResourceState('kora_clothing') ~= 'started' then return end
+    local ok, err = pcall(function() return exports.kora_clothing:applyStarterAppearance() end)
+    if not ok then
+        print(('^3[qbmultichar]^7 starter outfit could not be applied: %s'):format(tostring(err)))
+    end
+end
+
 local function finishAt(coords, forceNew)
     previewGeneration = previewGeneration + 1
     local isNew = pendingNewCharacter or forceNew == true
@@ -164,6 +177,9 @@ local function finishAt(coords, forceNew)
     while not IsScreenFadedOut() and GetGameTimer() < deadline do Wait(0) end
     SceneRuntime.endMode()
     leaveServerMode()
+    -- Before PlayerPedId() is read below: dressing a character of the other
+    -- gender swaps the player model, which replaces the ped entity.
+    if isNew then resetNewCharacterAppearance() end
     local ped = PlayerPedId()
     SetEntityCoords(ped, coords.x, coords.y, coords.z, false, false, false, true)
     SetEntityHeading(ped, coords.w or coords.h or 0.0)

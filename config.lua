@@ -231,3 +231,12 @@ Config.spawns = {
 -- top of that list moves both. Its `coords` are shared by reference, which is
 -- safe -- nothing here mutates a spawn's coordinates.
 Config.defaultSpawn = Config.spawns[1].coords
+
+-- A brand-new character never inherits the previous character's clothes. With
+-- resetAppearance on (default) and kora_clothing running, the ped is put into
+-- kora_clothing's starter outfit (kora_clothing Config.starterOutfit) while the
+-- screen is faded out, before the first spawn and before the character creator
+-- opens. Off: the ped keeps whatever it was wearing.
+Config.newCharacter = {
+    resetAppearance = true,
+}

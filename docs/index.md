@@ -74,6 +74,12 @@ build` from the `web` directory.
   location the picker offers and where a new character wakes up are one
   decision, so reordering that list moves both. kora_clothing's mandatory
   first-character creator waits for that spawn to complete before opening.
+- A new character never inherits the previous character's clothes. While the
+  screen is faded out, before the first spawn, the ped is dressed in
+  kora_clothing's starter outfit (`exports.kora_clothing:applyStarterAppearance()`,
+  configured by kora_clothing `Config.starterOutfit`), so the creator opens on
+  that look. Controlled by `Config.newCharacter.resetAppearance` (default
+  `true`; needs kora_clothing running).
 - The UI never reports a working preview as a broken one. It sizes its own
   timeout from the budget Lua ships with the spawn payload
   (`SceneRuntime.spawnPreviewBudgetMs`, derived from the flight timings and the
