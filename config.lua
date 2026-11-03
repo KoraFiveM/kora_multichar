@@ -74,12 +74,20 @@ Config.spawnFlight = {
 -- Spawn location selector controls.
 --   switchCooldownMs : minimum time between two location switches, applied to the
 --                      arrow buttons, the arrow keys and A / D alike (in the UI,
---                      and again in Lua for any switch that slips through).
---                      Each switch starts a camera flight and a world stream, so
---                      mashing the keys used to stack them up. 0 disables it.
+--                      and again in Lua between two camera flights). 0 disables it.
+--   settleMs         : browsing only changes the label; the camera flight, world
+--                      stream and ped anchor start once the player has stayed on
+--                      a location this long. Another switch restarts the wait, so
+--                      cycling through five places costs one flight, not five.
+--                      0 moves the camera on every switch.
+--   lockWhileMoving  : true ignores location switches while the camera is flying
+--                      to a location, until it has arrived. false lets a switch
+--                      cancel the flight (the next one starts after settleMs).
 --   hints            : text of the key hint bar under the selector.
 Config.spawnSelect = {
-    switchCooldownMs = 600,
+    switchCooldownMs = 800,
+    settleMs = 1000,
+    lockWhileMoving = true,
     hints = {
         previous = 'Previous',
         next = 'Next',

@@ -764,9 +764,17 @@ end
 SceneRuntime.PREVIEW_SUPERSEDED = 'superseded'
 local PREVIEW_SUPERSEDED = SceneRuntime.PREVIEW_SUPERSEDED
 
+-- The interpolation runs in the engine; this only waits for it. Short sleeps
+-- rather than one per frame still notice a cancelled flight within 50 ms.
+local CAMERA_WAIT_STEP_MS = 50
+
 local function waitCameraTransition(durationMs, generation)
     local deadline = GetGameTimer() + math.max(0, tonumber(durationMs) or 0)
-    while generation == state.sceneGeneration and GetGameTimer() < deadline do Wait(0) end
+    while generation == state.sceneGeneration do
+        local remaining = deadline - GetGameTimer()
+        if remaining <= 0 then break end
+        Wait(math.min(CAMERA_WAIT_STEP_MS, remaining))
+    end
     return generation == state.sceneGeneration
 end
 

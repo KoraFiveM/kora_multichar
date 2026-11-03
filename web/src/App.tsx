@@ -60,7 +60,7 @@ function parseUi(raw: unknown): UiSettings {
 
 type SpawnHints = { previous: string; next: string; preview: string; flying: string; spawn: string };
 const DEFAULT_SPAWN_HINTS: SpawnHints = { previous: "Previous", next: "Next", preview: "Preview location", flying: "Flying to location…", spawn: "Spawn" };
-type SpawnPayload = { locations?: SpawnLocation[]; visible?: boolean; previewBudgetMs?: number; switchCooldownMs?: number; hints?: Partial<SpawnHints> };
+type SpawnPayload = { locations?: SpawnLocation[]; visible?: boolean; previewBudgetMs?: number; switchCooldownMs?: number; settleMs?: number; lockWhileMoving?: boolean; hints?: Partial<SpawnHints> };
 
 function parseSpawnHints(value: Partial<SpawnHints> | undefined): SpawnHints {
   const pick = (key: keyof SpawnHints) => (typeof value?.[key] === "string" && value[key]!.trim() ? value[key]! : DEFAULT_SPAWN_HINTS[key]);
@@ -115,8 +115,17 @@ export function App() {
   const spawnPreviewBudget = useRef<number | null>(null);
   // Config.spawnSelect: minimum gap between location switches, enforced for
   // buttons, arrow keys and A/D alike in move(). A ref for the same reason.
-  const spawnSwitchCooldown = useRef(600);
+  const spawnSwitchCooldown = useRef(800);
   const lastSpawnSwitch = useRef(0);
+  // Config.spawnSelect.settleMs: browsing only changes the label; the camera
+  // flight starts once the player has stayed on a location this long.
+  const spawnSettle = useRef(1000);
+  const spawnSettleTimer = useRef(0);
+  // Config.spawnSelect.lockWhileMoving: no switching until the camera arrives.
+  const [spawnLock, setSpawnLock] = useState(true);
+  // The location the camera is showing or flying to, so browsing back to it
+  // does not start a flight to where the camera already is.
+  const spawnCameraTarget = useRef<string | null>(null);
   const [spawnHints, setSpawnHints] = useState<SpawnHints>(DEFAULT_SPAWN_HINTS);
   const [sceneName, setSceneName] = useState("");
   const [toast, setToast] = useState<string | null>(null);
@@ -178,7 +187,11 @@ export function App() {
         spawnPreviewBudget.current = (data as SpawnPayload)?.previewBudgetMs ?? spawnPreviewBudget.current;
         const cooldown = Number((data as SpawnPayload)?.switchCooldownMs);
         if (Number.isFinite(cooldown)) spawnSwitchCooldown.current = Math.max(0, cooldown);
+        const settle = Number((data as SpawnPayload)?.settleMs);
+        if (Number.isFinite(settle)) spawnSettle.current = Math.max(0, settle);
+        setSpawnLock((data as SpawnPayload)?.lockWhileMoving !== false);
         lastSpawnSwitch.current = 0;
+        spawnCameraTarget.current = null;
         setSpawnHints(parseSpawnHints((data as SpawnPayload)?.hints));
         spawnCameraReady.current = false;
         setStage("spawn"); setBusy(false); setSpawnIndex(0); setPreviewing(true); setSpawnTraveling(false);
@@ -228,51 +241,62 @@ export function App() {
   useEffect(() => {
     if (stage !== "spawn" || !spawn) return;
     let active = true;
-    const liveSeqAtStart = spawnPreviewLiveSeq.current;
     const initial = !spawnCameraReady.current;
-    if (initial) setPreviewing(true);
-    else setSpawnTraveling(true);
-    // A new preview has nothing to report yet; a stale stage line from the
-    // previous one would name the wrong location.
-    setPreviewStage(null);
+    // Browsing back to the place the camera already shows needs no flight.
+    if (!initial && spawnCameraTarget.current === spawn.id) return;
     let timeoutId = 0;
-    const timeout = new Promise<null>((resolve) => {
-      timeoutId = window.setTimeout(() => resolve(null), spawnPreviewTimeout(spawnPreviewBudget.current));
-    });
-    Promise.race([fetchNui<{ ok?: boolean; reason?: string }>("multichar:spawn:focus", { id: spawn.id }), timeout]).then((result) => {
-      if (!active) return;
-      if (result === null) {
-        // Silent if the camera for THIS preview already went live: the player
-        // has been looking at the place for the whole budget, and telling them
-        // it timed out would describe something they can see is not true. Only
-        // a preview that never came up is worth the toast.
-        if (spawnPreviewLiveSeq.current === liveSeqAtStart) {
-          setToast("Arrival preview timed out. You can still spawn here.");
+    const start = () => {
+      spawnSettleTimer.current = 0;
+      spawnCameraTarget.current = spawn.id;
+      const liveSeqAtStart = spawnPreviewLiveSeq.current;
+      if (initial) setPreviewing(true);
+      else setSpawnTraveling(true);
+      // A new preview has nothing to report yet; a stale stage line from the
+      // previous one would name the wrong location.
+      setPreviewStage(null);
+      const timeout = new Promise<null>((resolve) => {
+        timeoutId = window.setTimeout(() => resolve(null), spawnPreviewTimeout(spawnPreviewBudget.current));
+      });
+      Promise.race([fetchNui<{ ok?: boolean; reason?: string }>("multichar:spawn:focus", { id: spawn.id }), timeout]).then((result) => {
+        if (!active) return;
+        if (result === null) {
+          // Silent if the camera for THIS preview already went live: the player
+          // has been looking at the place for the whole budget, and telling them
+          // it timed out would describe something they can see is not true. Only
+          // a preview that never came up is worth the toast.
+          if (spawnPreviewLiveSeq.current === liveSeqAtStart) {
+            setToast("Arrival preview timed out. You can still spawn here.");
+          }
+          return;
         }
-        return;
-      }
-      if (result?.ok === false) {
-        // A superseded preview is the player picking somewhere else, or the
-        // scene being torn down under it -- expected, and silent. Only a
-        // camera or streaming failure is worth interrupting them for.
-        if (result.reason !== SPAWN_PREVIEW_SUPERSEDED) {
-          setToast("That arrival could not be previewed. You can still spawn here.");
+        if (result?.ok === false) {
+          // A superseded preview is the player picking somewhere else, or the
+          // scene being torn down under it -- expected, and silent. Only a
+          // camera or streaming failure is worth interrupting them for.
+          if (result.reason !== SPAWN_PREVIEW_SUPERSEDED) {
+            setToast("That arrival could not be previewed. You can still spawn here.");
+          }
+          return;
         }
-        return;
-      }
-      spawnCameraReady.current = true;
-    }).catch(() => {
-      if (active) setToast("That arrival could not be previewed. You can still spawn here.");
-    }).finally(() => {
-      window.clearTimeout(timeoutId);
-      if (!active) return;
-      // The preview is visual only. Whether it fails or its callback is
-      // interrupted, always release the selector so a player cannot remain
-      // indefinitely on “Scouting your arrival”.
-      if (initial) setPreviewing(false);
-      setSpawnTraveling(false);
-    });
-    return () => { active = false; };
+        spawnCameraReady.current = true;
+      }).catch(() => {
+        if (active) setToast("That arrival could not be previewed. You can still spawn here.");
+      }).finally(() => {
+        window.clearTimeout(timeoutId);
+        if (!active) return;
+        // The preview is visual only. Whether it fails or its callback is
+        // interrupted, always release the selector so a player cannot remain
+        // indefinitely on “Scouting your arrival”.
+        if (initial) setPreviewing(false);
+        setSpawnTraveling(false);
+      });
+    };
+    // The first shot comes up at once; after that the camera waits for the
+    // player to settle, and every further switch restarts the wait (cleanup).
+    if (spawnCameraTarget.current === null || spawnSettle.current <= 0) start();
+    else spawnSettleTimer.current = window.setTimeout(start, spawnSettle.current);
+    const settleTimer = spawnSettleTimer.current;
+    return () => { active = false; window.clearTimeout(settleTimer); };
   }, [stage, spawn?.id]);
 
   const move = (delta: number) => {
@@ -282,7 +306,7 @@ export function App() {
       const next = wrapIndex(index, delta, slideCount);
       if (next === index) return;
       setPreviewing(true); setIndex(next); setDetails(false);
-    } else if (stage === "spawn" && spawns.length && !busy) {
+    } else if (stage === "spawn" && spawns.length && !busy && !(spawnLock && (previewing || spawnTraveling))) {
       const now = Date.now();
       if (now - lastSpawnSwitch.current < spawnSwitchCooldown.current) return;
       lastSpawnSwitch.current = now;
@@ -296,6 +320,9 @@ export function App() {
       if (!character) setCreating(true);
       else { setBusy(true); fetchNui("multichar:select", { citizenid: character.citizenid }); }
     } else if (stage === "spawn" && spawn) {
+      // Spawning during the settle wait must not start a flight afterwards.
+      window.clearTimeout(spawnSettleTimer.current);
+      spawnSettleTimer.current = 0;
       setBusy(true); fetchNui("multichar:spawn:choose", { id: spawn.id });
     }
   };
@@ -333,7 +360,7 @@ export function App() {
           onDisconnect={() => (confirmDisconnect ? setDisconnecting(true) : fetchNui("multichar:disconnect"))}
         />
       )}
-      {stage === "spawn" && <SpawnScreen location={spawn} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} hints={spawnHints} onMove={move} onAccept={accept} />}
+      {stage === "spawn" && <SpawnScreen location={spawn} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} locked={spawnLock && (previewing || spawnTraveling)} hints={spawnHints} onMove={move} onAccept={accept} />}
       {stage === "creator" && creatorDraft && (
         <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
       )}
@@ -571,18 +598,18 @@ function DeleteDialog({ character, onClose, onBusy }: { character: Character; on
   </div></div>;
 }
 
-function SpawnScreen({ location, index, count, busy, previewing, traveling, hints, onMove, onAccept }: { location: SpawnLocation | null; index: number; count: number; busy: boolean; previewing: boolean; traveling: boolean; hints: SpawnHints; onMove: (delta: number) => void; onAccept: () => void }) {
+function SpawnScreen({ location, index, count, busy, previewing, traveling, locked, hints, onMove, onAccept }: { location: SpawnLocation | null; index: number; count: number; busy: boolean; previewing: boolean; traveling: boolean; locked: boolean; hints: SpawnHints; onMove: (delta: number) => void; onAccept: () => void }) {
   return <>
     <header className="topbar"><div><span className="eyebrow">ARRIVAL</span><h1>Where do you wake up?</h1></div><span className="mandatory-chip">Selection required</span></header>
     {traveling && <div className="travel-indicator" role="status"><Plane size={15} /><span>Flying to <strong>{location?.label}</strong></span></div>}
     <section className="carousel-shell spawn-carousel">
-      <button className="nav-button" disabled={count <= 1 || busy} onClick={() => onMove(-1)} aria-label="Previous location"><ChevronLeft /></button>
+      <button className="nav-button" disabled={count <= 1 || busy || locked} onClick={() => onMove(-1)} aria-label="Previous location"><ChevronLeft /></button>
       <div className="identity-card spawn-card">
         <div className="location-icon"><MapPin size={22} /></div>
         <div className="identity-copy"><span className="eyebrow">LOCATION {count ? index + 1 : 0} OF {count}</span><h2>{location?.label || "Loading locations"}</h2><p>{location?.description || "Preparing a safe arrival point…"}</p></div>
         <button className="button primary" disabled={!location || busy || previewing || traveling} onClick={onAccept}>{busy ? <LoaderCircle className="spin" size={17} /> : <MapPin size={17} />}Spawn here</button>
       </div>
-      <button className="nav-button" disabled={count <= 1 || busy} onClick={() => onMove(1)} aria-label="Next location"><ChevronRight /></button>
+      <button className="nav-button" disabled={count <= 1 || busy || locked} onClick={() => onMove(1)} aria-label="Next location"><ChevronRight /></button>
     </section>
     <div className="key-hints"><kbd>A</kbd><kbd>←</kbd><span>{hints.previous}</span><kbd>D</kbd><kbd>→</kbd><span>{hints.next}</span><span>{traveling ? hints.flying : hints.preview}</span><kbd>Enter</kbd><span>{hints.spawn}</span></div>
   </>;

@@ -153,7 +153,7 @@ describe('spawn and studio', () => {
       { id: 'legion', label: 'Legion Square', description: 'City centre' },
       { id: 'paleto', label: 'Paleto Bay', description: 'North coast' },
     ] });
-    message('multichar:spawn:show', { visible: true });
+    message('multichar:spawn:show', { visible: true, settleMs: 0, lockWhileMoving: false });
 
     await act(async () => { resolutions.shift()?.({ ok: true }); await Promise.resolve(); });
     fireEvent.click(screen.getByRole('button', { name: 'Next location' }));
@@ -190,6 +190,56 @@ describe('spawn and studio', () => {
     fireEvent.keyDown(window, { key: 'a' });
     expect(screen.getByRole('heading', { name: 'Alpha' })).toBeTruthy();
     now.mockRestore();
+  });
+
+  it('browses freely but flies only once the player settles, and locks switching until the camera arrives', async () => {
+    const resolutions: Array<(value: { ok?: boolean }) => void> = [];
+    nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
+      ? new Promise((resolve) => resolutions.push(resolve))
+      : Promise.resolve({}));
+    const focusCalls = () => nui.fetch.mock.calls
+      .filter((call: unknown[]) => call[0] === 'multichar:spawn:focus')
+      .map((call: unknown[]) => (call[1] as { id: string }).id);
+    render(<App />);
+    message('multichar:spawn:locations', { locations: [
+      { id: 'a', label: 'Alpha', description: '' },
+      { id: 'b', label: 'Bravo', description: '' },
+      { id: 'c', label: 'Charlie', description: '' },
+    ] });
+    message('multichar:spawn:show', { visible: true, switchCooldownMs: 0, settleMs: 1000, lockWhileMoving: true });
+    expect(focusCalls()).toEqual(['a']);
+    await act(async () => { resolutions.shift()?.({ ok: true }); await Promise.resolve(); });
+
+    // Rapid browsing: the label follows every press, the camera does nothing.
+    fireEvent.keyDown(window, { key: 'd' });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    expect(screen.getByRole('heading', { name: 'Charlie' })).toBeTruthy();
+    act(() => vi.advanceTimersByTime(999));
+    expect(focusCalls()).toEqual(['a']);
+    act(() => vi.advanceTimersByTime(1));
+    expect(focusCalls()).toEqual(['a', 'c']);
+
+    // Locked while flying.
+    expect(screen.getByRole('status').textContent).toContain('Flying to Charlie');
+    expect((screen.getByRole('button', { name: 'Next location' }) as HTMLButtonElement).disabled).toBe(true);
+    fireEvent.keyDown(window, { key: 'd' });
+    expect(screen.getByRole('heading', { name: 'Charlie' })).toBeTruthy();
+    await act(async () => { resolutions.shift()?.({ ok: true }); await Promise.resolve(); });
+    expect((screen.getByRole('button', { name: 'Next location' }) as HTMLButtonElement).disabled).toBe(false);
+
+    // Browsing away and back to the shown place costs no flight.
+    fireEvent.keyDown(window, { key: 'd' });
+    fireEvent.keyDown(window, { key: 'a' });
+    act(() => vi.advanceTimersByTime(2000));
+    expect(focusCalls()).toEqual(['a', 'c']);
+
+    // Spawning during the wait goes straight to the pick, with no flight after.
+    fireEvent.keyDown(window, { key: 'd' });
+    expect(screen.getByRole('heading', { name: 'Alpha' })).toBeTruthy();
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(nui.fetch).toHaveBeenCalledWith('multichar:spawn:choose', { id: 'a' });
+    act(() => vi.advanceTimersByTime(2000));
+    expect(focusCalls()).toEqual(['a', 'c']);
   });
 
   it('releases the spawn selector when an arrival preview fails', async () => {

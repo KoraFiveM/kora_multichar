@@ -156,6 +156,8 @@ openSpawnSelection = function(isNew)
         visible = true, isNew = isNew == true,
         previewBudgetMs = SceneRuntime.spawnPreviewBudgetMs(),
         switchCooldownMs = switchCooldownMs(),
+        settleMs = math.max(0, tonumber((Config.spawnSelect or {}).settleMs) or 0),
+        lockWhileMoving = (Config.spawnSelect or {}).lockWhileMoving ~= false,
         hints = (Config.spawnSelect or {}).hints,
     })
     return true
@@ -201,7 +203,7 @@ RegisterNUICallback('multichar:spawn:choose', function(data, cb)
         TriggerServerEvent('apartments:server:CreateApartment', location.apartmentType, location.label, true)
         multicharFinishSpawn(location.coords, true)
     else
-        multicharFinishSpawn(location.coords)
+        multicharFinishSpawn(location.coords, lastIsNew)
     end
     cb({ ok = true })
 end)

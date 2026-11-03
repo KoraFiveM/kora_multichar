@@ -63,8 +63,13 @@ build` from the `web` directory.
   controls altitude, speed, and the three transition timings. A bounded
   ten-second load falls back behind a blackout to a safe overview camera.
 - Rapid switching is rate-limited by `Config.spawnSelect.switchCooldownMs`
-  (default 600; 0 disables) for the arrow buttons, arrow keys and A/D, in the
-  UI and again in Lua. The cruise camera height is absolute (the previous
+  (default 800; 0 disables) for the arrow buttons, arrow keys and A/D, in the
+  UI and again in Lua between flights. Browsing only changes the label: the
+  camera flight, world stream and ped anchor start once the player has stayed
+  on a location for `Config.spawnSelect.settleMs` (default 1000; 0 flies on
+  every switch), and each further switch restarts that wait. With
+  `Config.spawnSelect.lockWhileMoving` (default true) switching is ignored
+  while the camera flies, until it arrives. The cruise camera height is absolute (the previous
   point's z plus `Config.spawnFlight` altitude), never added to the camera's
   current height. The key hint bar text is `Config.spawnSelect.hints`.
 - Locations are offered in a fixed order: last location, then `Config.spawns`
