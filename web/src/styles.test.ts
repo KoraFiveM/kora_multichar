@@ -44,6 +44,17 @@ describe("theme", () => {
     expect(css).not.toMatch(/fonts\.googleapis|fonts\.gstatic/);
   });
 
+  it("follows kora_theme font variables with the original stacks as fallbacks", () => {
+    expect(css).toMatch(/html, body, #root, button, input, select, textarea \{ font-family: var\(--font-sans\); \}/);
+    expect(css).toMatch(/h1, h2, h3 \{ font-family: var\(--font-heading, var\(--font-sans\)\); \}/);
+    expect(css).toMatch(/kbd \{[^}]*font: 700 13px var\(--font-mono, ui-monospace, monospace\);/);
+    expect(css).toMatch(/\.json-editor textarea \{[^}]*font-family: var\(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace\);/);
+    expect(css).toMatch(/\.cue-add input \{[^}]*font-family: var\(--font-mono, ui-monospace, monospace\);/);
+    // Every font-family outside @font-face goes through a theme variable.
+    const declarations = css.replace(/@font-face \{[^}]*\}/g, "").match(/font(-family)?:[^;]*;/g) ?? [];
+    for (const declaration of declarations) expect(declaration).toMatch(/var\(--font-(sans|heading|mono)/);
+  });
+
   it("drops the decorative accent rail, gradients and coloured glows", () => {
     expect(css).not.toMatch(/\.identity-card::before/);
     expect(css).not.toMatch(/gradient\(/);
