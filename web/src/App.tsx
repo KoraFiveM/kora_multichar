@@ -58,7 +58,14 @@ function parseUi(raw: unknown): UiSettings {
   };
 }
 
-type SpawnPayload = { locations?: SpawnLocation[]; visible?: boolean; previewBudgetMs?: number };
+type SpawnHints = { previous: string; next: string; preview: string; flying: string; spawn: string };
+const DEFAULT_SPAWN_HINTS: SpawnHints = { previous: "Previous", next: "Next", preview: "Preview location", flying: "Flying to location…", spawn: "Spawn" };
+type SpawnPayload = { locations?: SpawnLocation[]; visible?: boolean; previewBudgetMs?: number; switchCooldownMs?: number; hints?: Partial<SpawnHints> };
+
+function parseSpawnHints(value: Partial<SpawnHints> | undefined): SpawnHints {
+  const pick = (key: keyof SpawnHints) => (typeof value?.[key] === "string" && value[key]!.trim() ? value[key]! : DEFAULT_SPAWN_HINTS[key]);
+  return { previous: pick("previous"), next: pick("next"), preview: pick("preview"), flying: pick("flying"), spawn: pick("spawn") };
+}
 
 function roleLabel(role: Character["job"], fallback: string) {
   return role?.label || role?.name || fallback;
@@ -106,6 +113,11 @@ export function App() {
   // first preview starts, and making it a dependency of the preview effect
   // would restart an in-flight preview every time Lua re-sent it.
   const spawnPreviewBudget = useRef<number | null>(null);
+  // Config.spawnSelect: minimum gap between location switches, enforced for
+  // buttons, arrow keys and A/D alike in move(). A ref for the same reason.
+  const spawnSwitchCooldown = useRef(600);
+  const lastSpawnSwitch = useRef(0);
+  const [spawnHints, setSpawnHints] = useState<SpawnHints>(DEFAULT_SPAWN_HINTS);
   const [sceneName, setSceneName] = useState("");
   const [toast, setToast] = useState<string | null>(null);
   const [spawns, setSpawns] = useState<SpawnLocation[]>([]);
@@ -164,6 +176,10 @@ export function App() {
         setSpawns(Array.isArray(payload?.locations) ? payload.locations : []); setSpawnIndex(0);
       } else if (action === "multichar:spawn:show" && (data as SpawnPayload)?.visible) {
         spawnPreviewBudget.current = (data as SpawnPayload)?.previewBudgetMs ?? spawnPreviewBudget.current;
+        const cooldown = Number((data as SpawnPayload)?.switchCooldownMs);
+        if (Number.isFinite(cooldown)) spawnSwitchCooldown.current = Math.max(0, cooldown);
+        lastSpawnSwitch.current = 0;
+        setSpawnHints(parseSpawnHints((data as SpawnPayload)?.hints));
         spawnCameraReady.current = false;
         setStage("spawn"); setBusy(false); setSpawnIndex(0); setPreviewing(true); setSpawnTraveling(false);
       } else if (action === "multichar:creator:show") {
@@ -267,6 +283,9 @@ export function App() {
       if (next === index) return;
       setPreviewing(true); setIndex(next); setDetails(false);
     } else if (stage === "spawn" && spawns.length && !busy) {
+      const now = Date.now();
+      if (now - lastSpawnSwitch.current < spawnSwitchCooldown.current) return;
+      lastSpawnSwitch.current = now;
       setSpawnIndex((value) => wrapIndex(value, delta, spawns.length));
     }
   };
@@ -314,7 +333,7 @@ export function App() {
           onDisconnect={() => (confirmDisconnect ? setDisconnecting(true) : fetchNui("multichar:disconnect"))}
         />
       )}
-      {stage === "spawn" && <SpawnScreen location={spawn} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} onMove={move} onAccept={accept} />}
+      {stage === "spawn" && <SpawnScreen location={spawn} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} hints={spawnHints} onMove={move} onAccept={accept} />}
       {stage === "creator" && creatorDraft && (
         <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
       )}
@@ -552,7 +571,7 @@ function DeleteDialog({ character, onClose, onBusy }: { character: Character; on
   </div></div>;
 }
 
-function SpawnScreen({ location, index, count, busy, previewing, traveling, onMove, onAccept }: { location: SpawnLocation | null; index: number; count: number; busy: boolean; previewing: boolean; traveling: boolean; onMove: (delta: number) => void; onAccept: () => void }) {
+function SpawnScreen({ location, index, count, busy, previewing, traveling, hints, onMove, onAccept }: { location: SpawnLocation | null; index: number; count: number; busy: boolean; previewing: boolean; traveling: boolean; hints: SpawnHints; onMove: (delta: number) => void; onAccept: () => void }) {
   return <>
     <header className="topbar"><div><span className="eyebrow">ARRIVAL</span><h1>Where do you wake up?</h1></div><span className="mandatory-chip">Selection required</span></header>
     {traveling && <div className="travel-indicator" role="status"><Plane size={15} /><span>Flying to <strong>{location?.label}</strong></span></div>}
@@ -565,7 +584,7 @@ function SpawnScreen({ location, index, count, busy, previewing, traveling, onMo
       </div>
       <button className="nav-button" disabled={count <= 1 || busy} onClick={() => onMove(1)} aria-label="Next location"><ChevronRight /></button>
     </section>
-    <div className="key-hints"><kbd>←</kbd><kbd>→</kbd><span>{traveling ? "Flying to location…" : "Preview location"}</span><kbd>Enter</kbd><span>Spawn</span></div>
+    <div className="key-hints"><kbd>A</kbd><kbd>←</kbd><span>{hints.previous}</span><kbd>D</kbd><kbd>→</kbd><span>{hints.next}</span><span>{traveling ? hints.flying : hints.preview}</span><kbd>Enter</kbd><span>{hints.spawn}</span></div>
   </>;
 }
 

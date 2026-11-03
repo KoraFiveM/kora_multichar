@@ -62,6 +62,11 @@ build` from the `web` directory.
   along the authored destination camera's approach. `Config.spawnFlight`
   controls altitude, speed, and the three transition timings. A bounded
   ten-second load falls back behind a blackout to a safe overview camera.
+- Rapid switching is rate-limited by `Config.spawnSelect.switchCooldownMs`
+  (default 600; 0 disables) for the arrow buttons, arrow keys and A/D, in the
+  UI and again in Lua. The cruise camera height is absolute (the previous
+  point's z plus `Config.spawnFlight` altitude), never added to the camera's
+  current height. The key hint bar text is `Config.spawnSelect.hints`.
 - Locations are offered in a fixed order: last location, then `Config.spawns`
   exactly as declared, then owned property by label.
 - New characters bypass the spawn carousel and land immediately at

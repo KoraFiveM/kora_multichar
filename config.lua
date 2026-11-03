@@ -58,6 +58,9 @@ Config.sceneLimits = {
 -- distance-scaled and clamped so nearby choices do not feel sluggish while
 -- cross-map flights remain watchable.
 Config.spawnFlight = {
+    -- Cruise height above the CURRENT spawn point's look-at z, never above the
+    -- camera's current height (that made every rapid switch climb higher). The
+    -- cruise altitude is max(liftHeight, clamp(distance * 0.10, min, max)).
     liftHeight = 130.0,
     minAltitude = 180.0,
     maxAltitude = 420.0,
@@ -66,6 +69,24 @@ Config.spawnFlight = {
     minTravelDurationMs = 1400,
     maxTravelDurationMs = 4200,
     unitsPerSecond = 650.0,
+}
+
+-- Spawn location selector controls.
+--   switchCooldownMs : minimum time between two location switches, applied to the
+--                      arrow buttons, the arrow keys and A / D alike (in the UI,
+--                      and again in Lua for any switch that slips through).
+--                      Each switch starts a camera flight and a world stream, so
+--                      mashing the keys used to stack them up. 0 disables it.
+--   hints            : text of the key hint bar under the selector.
+Config.spawnSelect = {
+    switchCooldownMs = 600,
+    hints = {
+        previous = 'Previous',
+        next = 'Next',
+        preview = 'Preview location',
+        flying = 'Flying to location…',
+        spawn = 'Spawn',
+    },
 }
 
 Config.defaultScene = 'civilian'

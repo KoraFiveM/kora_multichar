@@ -5,6 +5,12 @@
 local spawnLocations = {}
 local spawnById = {}
 
+local focusSeq, lastFocusAt = 0, 0
+
+local function switchCooldownMs()
+    return math.max(0, tonumber((Config.spawnSelect or {}).switchCooldownMs) or 0)
+end
+
 local function send(action, data)
     SendNUIMessage({ action = action, data = data })
 end
@@ -149,6 +155,8 @@ openSpawnSelection = function(isNew)
     send('multichar:spawn:show', {
         visible = true, isNew = isNew == true,
         previewBudgetMs = SceneRuntime.spawnPreviewBudgetMs(),
+        switchCooldownMs = switchCooldownMs(),
+        hints = (Config.spawnSelect or {}).hints,
     })
     return true
 end
@@ -165,6 +173,20 @@ end)
 RegisterNUICallback('multichar:spawn:focus', function(data, cb)
     local location = spawnById[type(data) == 'table' and data.id or nil]
     local ok, streamed, reason = false, false, 'that location is not on the list'
+    -- Backstop for the NUI cooldown: a request inside the window waits out the
+    -- rest of it once (no polling), and is dropped if a newer one arrived
+    -- meanwhile, so only the latest pick ever starts a flight.
+    focusSeq = focusSeq + 1
+    local ticket = focusSeq
+    local remaining = lastFocusAt + switchCooldownMs() - GetGameTimer()
+    if location and remaining > 0 then
+        Wait(remaining)
+        if ticket ~= focusSeq then
+            cb({ ok = false, streamed = false, reason = SceneRuntime.PREVIEW_SUPERSEDED })
+            return
+        end
+    end
+    lastFocusAt = GetGameTimer()
     if location then ok, streamed, reason = SceneRuntime.previewSpawn(location) end
     cb({ ok = ok, streamed = streamed, reason = reason })
 end)

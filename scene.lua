@@ -905,10 +905,12 @@ function SceneRuntime.previewSpawn(location)
     local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
     local altitude = math.min(tonumber(settings.maxAltitude) or 420.0,
         math.max(tonumber(settings.minAltitude) or 180.0, distance * 0.10))
+    -- Absolute: spawn point z + offset. oldPosition.z is the camera as rendered
+    -- mid-flight, so adding to it compounded on every rapid switch.
     local liftPosition = vector3(
         oldPosition.x,
         oldPosition.y,
-        math.max(oldPosition.z + (tonumber(settings.liftHeight) or 130.0), oldLookAt.z + altitude)
+        oldLookAt.z + math.max(tonumber(settings.liftHeight) or 130.0, altitude)
     )
 
     local approachX, approachY = targetCamera.x - targetLookAt.x, targetCamera.y - targetLookAt.y

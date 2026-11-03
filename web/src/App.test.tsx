@@ -166,6 +166,32 @@ describe('spawn and studio', () => {
     expect(screen.queryByRole('status')).toBeNull();
   });
 
+  it('ignores location switches inside the cooldown for buttons and A/D/arrow keys alike, and shows key hints', async () => {
+    let clock = 1_000_000;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => clock);
+    render(<App />);
+    message('multichar:spawn:locations', { locations: [
+      { id: 'a', label: 'Alpha', description: '' },
+      { id: 'b', label: 'Bravo', description: '' },
+      { id: 'c', label: 'Charlie', description: '' },
+    ] });
+    message('multichar:spawn:show', { visible: true, switchCooldownMs: 600, hints: { next: 'Weiter' } });
+    await act(async () => { await Promise.resolve(); });
+    expect(screen.getByText('Weiter')).toBeTruthy();
+    expect(screen.getByText('A')).toBeTruthy();
+    expect(screen.getByText('D')).toBeTruthy();
+
+    fireEvent.keyDown(window, { key: 'd' });
+    fireEvent.keyDown(window, { key: 'd' });
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    fireEvent.click(screen.getByRole('button', { name: 'Next location' }));
+    expect(screen.getByRole('heading', { name: 'Bravo' })).toBeTruthy();
+    clock += 601;
+    fireEvent.keyDown(window, { key: 'a' });
+    expect(screen.getByRole('heading', { name: 'Alpha' })).toBeTruthy();
+    now.mockRestore();
+  });
+
   it('releases the spawn selector when an arrival preview fails', async () => {
     nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
       ? Promise.resolve({ ok: false })
