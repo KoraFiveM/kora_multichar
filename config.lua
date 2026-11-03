@@ -95,6 +95,10 @@ Config.ui = {
     -- shown by the game's embedded browser and answers "no", which left the
     -- dialog impossible to close once any name was typed. false closes at once.
     confirmDiscardOnClose = true,
+    -- The disconnect button (top right of the character screen) asks
+    -- "Disconnect?" with Cancel / Disconnect before leaving the server.
+    -- false disconnects at once, as before.
+    confirmDisconnect = true,
     -- Brand text shown above "Choose your story" and on the loading cover
     -- ("<brand> · CINEMATIC"). Set it to your server or framework name.
     brandName = 'Kora',

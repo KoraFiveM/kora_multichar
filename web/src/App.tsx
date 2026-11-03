@@ -82,6 +82,8 @@ export function App() {
   const [details, setDetails] = useState(false);
   const [creating, setCreating] = useState(false);
   const [deleting, setDeleting] = useState(false);
+  const [disconnecting, setDisconnecting] = useState(false);
+  const [confirmDisconnect, setConfirmDisconnect] = useState(true);
   const [busy, setBusy] = useState(false);
   const [previewing, setPreviewing] = useState(false);
   // From the show payload; 0 disables the watchdog.
@@ -122,10 +124,12 @@ export function App() {
     const listener = (event: MessageEvent<NuiMessage>) => {
       const { action, data } = event.data || {};
       if (action === "multichar:show") {
-        const payload = data as { characters?: unknown; maxCharacters?: number; previewWatchdogMs?: number; ui?: Record<string, unknown> & { closeCreateOnBackdrop?: boolean; confirmDiscardOnClose?: boolean } };
+        const payload = data as { characters?: unknown; maxCharacters?: number; previewWatchdogMs?: number; ui?: Record<string, unknown> & { closeCreateOnBackdrop?: boolean; confirmDiscardOnClose?: boolean; confirmDisconnect?: boolean } };
         setPreviewWatchdogMs(Math.max(0, Number(payload?.previewWatchdogMs) || 0));
         setCloseCreateOnBackdrop(payload?.ui?.closeCreateOnBackdrop === true);
         setConfirmDiscard(payload?.ui?.confirmDiscardOnClose !== false);
+        setConfirmDisconnect(payload?.ui?.confirmDisconnect !== false);
+        setDisconnecting(false);
         const nextUi = parseUi(payload?.ui);
         setUiSettings(nextUi);
         setCreateDraft(emptyCreateDraft(nextUi));
@@ -307,6 +311,7 @@ export function App() {
           details={details} previewing={previewing} sceneName={sceneName} busy={busy}
           onMove={move} onAccept={accept} onDetails={() => setDetails((value) => !value)}
           onCreate={() => setCreating(true)} onDelete={() => setDeleting(true)}
+          onDisconnect={() => (confirmDisconnect ? setDisconnecting(true) : fetchNui("multichar:disconnect"))}
         />
       )}
       {stage === "spawn" && <SpawnScreen location={spawn} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} onMove={move} onAccept={accept} />}
@@ -315,6 +320,7 @@ export function App() {
       )}
       {previewing && !creating && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} brand={uiSettings.brandName} />}
       {creating && <CreateDialog ui={uiSettings} draft={createDraft} onDraft={setCreateDraft} closeOnBackdrop={closeCreateOnBackdrop} confirmDiscard={confirmDiscard} onClose={() => setCreating(false)} onBusy={setBusy} />}
+      {disconnecting && <DisconnectDialog onClose={() => setDisconnecting(false)} />}
       {deleting && character && <DeleteDialog character={character} onClose={() => setDeleting(false)} onBusy={setBusy} />}
     </div>
   );
@@ -348,7 +354,7 @@ function CharacterScreen(props: {
   characters: Character[]; character: Character | null; index: number; count: number; canCreate: boolean;
   brand: string; showNewBadge: boolean; profile: ProfileText;
   details: boolean; previewing: boolean; sceneName: string; busy: boolean;
-  onMove: (delta: number) => void; onAccept: () => void; onDetails: () => void; onCreate: () => void; onDelete: () => void;
+  onMove: (delta: number) => void; onAccept: () => void; onDetails: () => void; onCreate: () => void; onDelete: () => void; onDisconnect: () => void;
 }) {
   const { character } = props;
   const job = character ? roleLabel(character.job, "Civilian") : "Create a new story";
@@ -358,7 +364,7 @@ function CharacterScreen(props: {
   return <>
     <header className="topbar">
       <div><span className="eyebrow brand-mark">{props.brand}</span><h1>Choose your story</h1></div>
-      <button className="icon-button" aria-label="Disconnect" onClick={() => fetchNui("multichar:disconnect")}><LogOut size={18} /></button>
+      <button className="icon-button" aria-label="Disconnect" onClick={props.onDisconnect}><LogOut size={18} /></button>
     </header>
     <div className="scene-label"><Clapperboard size={13} />{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</div>
     {props.details && character && <Dossier character={character} profile={props.profile} onClose={props.onDetails} onDelete={props.onDelete} />}
@@ -521,6 +527,19 @@ function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onC
 
 function FieldError({ id, message }: { id: string; message?: string }) {
   return message ? <small id={id} className="field-error" role="alert">{message}</small> : null;
+}
+
+function DisconnectDialog({ onClose }: { onClose: () => void }) {
+  useEffect(() => {
+    const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+  return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><div className="modal panel disconnect-modal" role="alertdialog" aria-label="Disconnect">
+    <div className="modal-rail danger" /><div className="panel-heading"><div><span className="eyebrow">LEAVE SERVER</span><h3>Disconnect?</h3></div><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16} /></button></div>
+    <p className="modal-copy">You will leave the server and return to the main menu.</p>
+    <div className="modal-actions"><button className="button ghost" onClick={onClose}>Cancel</button><button className="button destructive" autoFocus onClick={() => { onClose(); fetchNui("multichar:disconnect"); }}><LogOut size={16} />Disconnect</button></div>
+  </div></div>;
 }
 
 function DeleteDialog({ character, onClose, onBusy }: { character: Character; onClose: () => void; onBusy: (value: boolean) => void }) {

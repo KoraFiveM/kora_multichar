@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { act, cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { act, cleanup, fireEvent, render, screen, within } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { App } from './App';
 import { SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS } from './lib';
@@ -405,6 +405,19 @@ describe('spawn and studio', () => {
       expect(screen.queryByLabelText('First name')).toBeNull();
       expect(confirm).not.toHaveBeenCalled();
       confirm.mockRestore();
+    });
+
+    it('asks before disconnecting and only disconnects on confirm', () => {
+      render(<App />);
+      message('multichar:show', { characters: [], maxCharacters: 1, ui: {} });
+      act(() => vi.advanceTimersByTime(121));
+      fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+      expect(nui.fetch).not.toHaveBeenCalledWith('multichar:disconnect');
+      fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+      expect(screen.queryByRole('alertdialog', { name: 'Disconnect' })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: 'Disconnect' }));
+      fireEvent.click(within(screen.getByRole('alertdialog', { name: 'Disconnect' })).getByRole('button', { name: 'Disconnect' }));
+      expect(nui.fetch).toHaveBeenCalledWith('multichar:disconnect');
     });
 
     it('closes at once when confirmDiscardOnClose is off', () => {

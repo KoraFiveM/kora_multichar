@@ -230,6 +230,7 @@ local function refreshCharacters()
         ui = {
             closeCreateOnBackdrop = Config.ui.closeCreateOnBackdrop,
             confirmDiscardOnClose = Config.ui.confirmDiscardOnClose,
+            confirmDisconnect = Config.ui.confirmDisconnect,
             brandName = Config.ui.brandName,
             showNewSlotBadge = Config.ui.showNewSlotBadge,
             profile = Config.ui.profile,
