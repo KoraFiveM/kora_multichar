@@ -1,6 +1,7 @@
 /* Onest (SIL OFL 1.1, see fonts/OFL.txt) is bundled with the NUI, so nothing is
-   fetched from a font CDN at runtime. Servers can swap the face by overriding
-   --font-sans (and the surface/shadow variables below) in a theme. */
+   fetched from a font CDN at runtime. Onest is only the default: kora_theme's
+   live font picks (--font-sans / --font-heading / --font-mono, set inline on
+   :root by theme.js) take precedence over the declaration below. */
 @font-face { font-family: "Onest"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("./fonts/onest-cyrillic-wght-normal.woff2") format("woff2-variations"), url("./fonts/onest-cyrillic-wght-normal.woff2") format("woff2"); unicode-range: U+0301, U+0400-045F, U+0490-0491, U+04B0-04B1, U+2116; }
 @font-face { font-family: "Onest"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("./fonts/onest-latin-ext-wght-normal.woff2") format("woff2-variations"), url("./fonts/onest-latin-ext-wght-normal.woff2") format("woff2"); unicode-range: U+0100-02BA, U+02BD-02C5, U+02C7-02CC, U+02CE-02D7, U+02DD-02FF, U+0304, U+0308, U+0329, U+1D00-1DBF, U+1E00-1E9F, U+1EF2-1EFF, U+2020, U+20A0-20AB, U+20AD-20C0, U+2113, U+2C60-2C7F, U+A720-A7FF; }
 @font-face { font-family: "Onest"; font-style: normal; font-weight: 100 900; font-display: swap; src: url("./fonts/onest-latin-wght-normal.woff2") format("woff2-variations"), url("./fonts/onest-latin-wght-normal.woff2") format("woff2"); unicode-range: U+0000-00FF, U+0131, U+0152-0153, U+02BB-02BC, U+02C6, U+02DA, U+02DC, U+0304, U+0308, U+0329, U+2000-206F, U+20AC, U+2122, U+2191, U+2193, U+2212, U+2215, U+FEFF, U+FFFD; }
@@ -12,6 +13,7 @@
   --shadow-panel: 0 8px 24px rgb(0 0 0 / .38);
 }
 html, body, #root, button, input, select, textarea { font-family: var(--font-sans); }
+h1, h2, h3 { font-family: var(--font-heading, var(--font-sans)); }
 /* UI text is not selectable anywhere: a click-drag across the character list
    would otherwise highlight labels and icons on top of the scene. Form fields
    stay selectable and editable. */
@@ -74,7 +76,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .button.ghost:hover { border-color: hsl(var(--brand-border)); color: hsl(var(--foreground)); }
 .button.destructive { border-color: hsl(var(--destructive-border)); background: hsl(var(--destructive-soft)); color: hsl(var(--destructive)); }
 .key-hints { position: absolute; z-index: 2; bottom: 17px; left: 50%; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); color: hsl(var(--muted-foreground)); font-size: 13px; text-shadow: 0 1px 3px rgb(0 0 0 / .7); }
-kbd { border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--card)); padding: 4px 8px; color: hsl(var(--foreground)); font: 700 13px ui-monospace, monospace; }
+kbd { border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--card)); padding: 4px 8px; color: hsl(var(--foreground)); font: 700 13px var(--font-mono, ui-monospace, monospace); }
 .dossier { position: absolute; z-index: 4; bottom: 190px; left: 50%; width: min(660px, calc(100vw - 32px)); padding: 17px; transform: translateX(-50%); animation: dossier-in .24s cubic-bezier(.16,1,.3,1); }
 .dossier::after { content: ""; position: absolute; bottom: -6px; left: 50%; width: 11px; height: 11px; transform: translateX(-50%) rotate(45deg); border-right: 1px solid hsl(var(--border) / .86); border-bottom: 1px solid hsl(var(--border) / .86); background: hsl(var(--card)); }
 .dossier-heading { display: grid; grid-template-columns: auto 1fr auto; align-items: center; gap: 11px; }.dossier-heading h3 { margin: 2px 0 2px; font-size: 17px; letter-spacing: -.02em; }.dossier-heading p { margin: 0; color: hsl(var(--muted-foreground)); font-size: 9px; }
@@ -141,7 +143,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: hsl(var(
 .row-tools { display: flex; align-items: center; gap: 2px; }.row-tools button:disabled { opacity: .25; cursor: default; }
 .json-editor { border: 1px solid hsl(var(--border) / .65); border-top: 0; border-radius: 0 0 6px 6px; padding: 4px 6px 6px; background: hsl(var(--background) / .92); }
 .json-editor summary { color: hsl(var(--muted-foreground)); cursor: pointer; font-size: 8px; font-weight: 750; letter-spacing: .05em; text-transform: uppercase; }
-.json-editor textarea { margin: 6px 0; min-height: 92px; resize: vertical; font-family: ui-monospace, SFMono-Regular, Consolas, monospace; font-size: 8px; line-height: 1.45; }
+.json-editor textarea { margin: 6px 0; min-height: 92px; resize: vertical; font-family: var(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace); font-size: 8px; line-height: 1.45; }
 .json-editor small { display: block; margin-bottom: 5px; color: hsl(var(--destructive)); font-size: 8px; }
 .inline-add { display: grid; grid-template-columns: 1fr 78px; gap: 5px; margin-top: 8px; }.inline-add input:last-of-type { grid-column: 1 / -1; }.inline-add .mini-button { grid-column: 1 / -1; }
 .timeline { position: absolute; z-index: 2; left: 310px; right: 310px; bottom: 76px; height: 104px; padding: 9px 11px; }
@@ -149,7 +151,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: hsl(var(
 .timeline-heading label { display: flex; flex-direction: row; align-items: center; gap: 6px; margin: 0; }.timeline-heading input[type="number"] { width: 72px; padding: 4px; }.timeline-heading .check input { width: auto; }
 .scrubber { height: 5px; margin: 8px 0 5px; padding: 0; accent-color: hsl(var(--primary)); }.cue-list { display: flex; gap: 4px; overflow: auto; }.cue-editor { flex: none; }.cue { display: flex; align-items: center; gap: 5px; border: 1px solid hsl(var(--border)); border-radius: 5px; padding: 3px 5px; background: hsl(var(--surface-raised)); font-size: 8px; white-space: nowrap; }.cue b { color: hsl(var(--primary)); }.cue button { border: 0; background: transparent; color: hsl(var(--muted-foreground)); padding: 0; cursor: pointer; }
 .cue-editor > .json-editor { border: 0; padding: 2px 3px; background: transparent; }.cue-editor > .json-editor[open] { position: fixed; z-index: 40; left: 50%; bottom: 190px; width: 360px; transform: translateX(-50%); border: 1px solid hsl(var(--brand-border)); border-radius: 8px; padding: 9px; background: hsl(var(--popover)); box-shadow: var(--shadow-panel); }
-.cue-add { position: absolute; left: 11px; right: 11px; bottom: -38px; display: flex; gap: 5px; }.cue-add input { height: 30px; padding: 5px 7px; font-family: ui-monospace, monospace; font-size: 9px; }.cue-add .mini-button { flex: none; }
+.cue-add { position: absolute; left: 11px; right: 11px; bottom: -38px; display: flex; gap: 5px; }.cue-add input { height: 30px; padding: 5px 7px; font-family: var(--font-mono, ui-monospace, monospace); font-size: 9px; }.cue-add .mini-button { flex: none; }
 .creator-actions { position: absolute; z-index: 3; right: var(--edge-inset); bottom: var(--edge-inset); display: flex; gap: 7px; padding: 8px; }.export-toast { position: absolute; right: 0; bottom: 54px; border: 1px solid hsl(var(--brand-border)); border-radius: 7px; padding: 7px 10px; background: hsl(var(--popover)); color: hsl(var(--foreground)); font-size: 10px; }
 
 @keyframes reveal { from { opacity: 0; } }
