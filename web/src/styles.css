@@ -49,7 +49,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .nav-button:last-child { margin-left: -15px; }
 .nav-button svg { display: block; transform: translateY(-.5px); }
 .nav-button:hover { transform: scale(1.06); border-color: hsl(var(--brand-border)); background: hsl(var(--surface-hover)); color: hsl(var(--foreground)); }
-.nav-button:disabled { opacity: .55; cursor: default; transform: none; }
+.nav-button:disabled { cursor: default; transform: none; border-color: hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--muted-foreground) / .45); box-shadow: none; } /* dim the icon, not the circle: a translucent circle shows the card edge through it */
 .identity-card { position: relative; border: 1px solid hsl(var(--border) / .85); border-radius: 15px; background: hsl(var(--card)); box-shadow: var(--shadow-panel); pointer-events: auto; overflow: hidden; }
 .character-card { width: min(660px, calc(100vw - 130px)); min-height: 116px; display: grid; grid-template-columns: 54px minmax(0, 1fr) auto; align-items: center; gap: 15px; padding: 17px 20px 17px 24px; }
 .identity-mark { display: grid; width: 54px; height: 54px; place-items: center; border: 1px solid hsl(var(--brand-border)); border-radius: 14px; background: hsl(var(--brand-soft)); color: hsl(var(--foreground)); font-size: 17px; font-weight: 850; letter-spacing: .04em; }

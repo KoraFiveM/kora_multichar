@@ -66,3 +66,11 @@ describe("theme", () => {
     expect(css).toMatch(/\.icon-button svg \{ display: block;/);
   });
 });
+
+describe("nav buttons", () => {
+  it("keeps disabled arrows opaque so the card edge does not show through the circle", () => {
+    const rule = css.match(/\.nav-button:disabled \{([^}]*)\}/)?.[1] ?? "";
+    expect(rule).not.toMatch(/opacity/);
+    expect(rule).toMatch(/background: hsl\(var\(--card\)\)/);
+  });
+});
