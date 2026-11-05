@@ -59,7 +59,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .profile-count { display: inline-flex; align-items: baseline; gap: 4px; color: hsl(var(--muted-foreground)); font-size: 9px; font-weight: 800; letter-spacing: .08em; }
 .profile-count strong { color: hsl(var(--foreground)); font-size: 11px; }.profile-count i { opacity: .45; font-style: normal; }
 .new-slot-chip { border: 1px solid hsl(var(--brand-border)); border-radius: 999px; padding: 2px 6px; background: hsl(var(--brand-soft)); color: hsl(var(--primary)); font-size: 8px; font-weight: 850; letter-spacing: .1em; }
-.identity-copy h2 { overflow: hidden; margin: 5px 0 7px; font-size: 24px; line-height: 1.05; letter-spacing: -.03em; text-overflow: ellipsis; white-space: nowrap; }
+.identity-copy h2 { overflow: hidden; margin: 5px 0 7px; font-size: 24px; line-height: 1.2; letter-spacing: -.03em; overflow-wrap: anywhere; }
 .identity-copy p { display: flex; align-items: center; gap: 7px; margin: 0; color: hsl(var(--muted-foreground)); font-size: 12px; }
 .identity-meta { display: flex; min-width: 0; align-items: center; gap: 7px; color: hsl(var(--muted-foreground)); font-size: 10px; }
 .career-label { display: inline-flex; min-width: 0; align-items: center; gap: 6px; overflow: hidden; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }.career-label svg { flex: none; color: hsl(var(--primary)); }
@@ -75,7 +75,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .button.ghost { border-color: hsl(var(--border)); background: hsl(var(--surface-raised)); color: hsl(var(--muted-foreground)); }
 .button.ghost:hover { border-color: hsl(var(--brand-border)); color: hsl(var(--foreground)); }
 .button.destructive { border-color: hsl(var(--destructive-border)); background: hsl(var(--destructive-soft)); color: hsl(var(--destructive)); }
-.key-hints { position: absolute; z-index: 2; bottom: 17px; left: 50%; display: flex; align-items: center; gap: 8px; transform: translateX(-50%); color: hsl(var(--muted-foreground)); font-size: 13px; text-shadow: 0 1px 3px rgb(0 0 0 / .7); }
+.key-hints { position: absolute; z-index: 2; bottom: 17px; left: 50%; display: flex; align-items: center; gap: 10px; transform: translateX(-50%); border: 1px solid hsl(var(--border)); border-radius: 10px; background: rgb(0 0 0 / .72); padding: 8px 14px; color: hsl(var(--foreground) / .9); font-size: 13px; white-space: nowrap; text-shadow: 0 1px 3px rgb(0 0 0 / .7); }
 kbd { border: 1px solid hsl(var(--border)); border-radius: 6px; background: hsl(var(--card)); padding: 4px 8px; color: hsl(var(--foreground)); font: 700 13px var(--font-mono, ui-monospace, monospace); }
 .dossier { position: absolute; z-index: 4; bottom: 190px; left: 50%; width: min(660px, calc(100vw - 32px)); padding: 17px; transform: translateX(-50%); animation: dossier-in .24s cubic-bezier(.16,1,.3,1); }
 .dossier::after { content: ""; position: absolute; bottom: -6px; left: 50%; width: 11px; height: 11px; transform: translateX(-50%) rotate(45deg); border-right: 1px solid hsl(var(--border) / .86); border-bottom: 1px solid hsl(var(--border) / .86); background: hsl(var(--card)); }

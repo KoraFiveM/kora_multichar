@@ -89,7 +89,16 @@ local function previewCharacter(citizenid)
     send('multichar:previewLoading', { citizenid = citizenid })
 
     CreateThread(function()
-        local model, skin = Kora.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
+        -- pcall: the cross-resource trigger raises on a timeout or an unregistered
+        -- callback (kora_clothing not running/restarting), which would kill this
+        -- thread with no previewReady and leave the screen flashing.
+        local ok, model, skin = pcall(function()
+            return Kora.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
+        end)
+        if not ok then
+            print(('^3[qbmultichar]^7 skin fetch failed, using default model: %s'):format(tostring(model)))
+            model, skin = nil, nil
+        end
         if generation ~= previewGeneration then return end
         if type(model) ~= 'string' then model, skin = fallbackModel(character), {} end
         -- A catalog that arrived empty (a boot fetch that never answered) makes
