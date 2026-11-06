@@ -1,8 +1,22 @@
 import { describe, expect, it } from "vitest";
 import {
   characterName, isValidBirthdate, normalizeCharacters, SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS,
-  SPAWN_PREVIEW_HEADROOM_MS, spawnPreviewTimeout, wrapIndex,
+  SPAWN_PREVIEW_HEADROOM_MS, slotTarget, spawnPreviewTimeout, wrapIndex,
 } from "./lib";
+
+describe("arrow targets", () => {
+  const jane = { citizenid: "A", charinfo: { firstname: "Jane", lastname: "Doe" } };
+  const bob = { citizenid: "B", charinfo: { firstname: "Bob", lastname: "Ray" } };
+  it("names the neighbouring character or the free slot, wrapping around", () => {
+    expect(slotTarget([jane, bob], true, 0, 1)).toEqual({ slot: 2, label: "Bob Ray", empty: false });
+    expect(slotTarget([jane, bob], true, 0, -1)).toEqual({ slot: 3, label: "Create New Character", empty: true });
+    expect(slotTarget([jane, bob], false, 1, 1)).toEqual({ slot: 1, label: "Jane Doe", empty: false });
+  });
+  it("has no target when there is only one slot", () => {
+    expect(slotTarget([jane], false, 0, 1)).toBeNull();
+    expect(slotTarget([], true, 0, -1)).toBeNull();
+  });
+});
 
 describe("character payloads", () => {
   it("normalizes Lua empty objects and rejects malformed objects", () => {

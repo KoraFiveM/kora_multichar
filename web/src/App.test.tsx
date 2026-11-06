@@ -52,6 +52,22 @@ describe('character selection', () => {
     expect(nui.fetch).toHaveBeenCalledWith('multichar:select', { citizenid: 'JANE1' });
   });
 
+  it('names the character or free slot each arrow leads to, and shows nothing with a single slot', () => {
+    const bob = { ...jane, citizenid: 'BOB2', cid: 2, charinfo: { ...jane.charinfo, firstname: 'Bob' } };
+    const { unmount } = render(<App />);
+    message('multichar:show', { characters: [jane, bob], maxCharacters: 3 });
+    expect(screen.getByTestId('nav-target-next').textContent).toBe('Character 2Bob Doe');
+    expect(screen.getByTestId('nav-target-prev').textContent).toBe('Character 3Create New Character');
+    expect(screen.getByRole('button', { name: 'Next, Character 2: Bob Doe' })).toBeTruthy();
+    expect(screen.getByRole('button', { name: 'Previous, Character 3: Create New Character' })).toBeTruthy();
+    unmount();
+
+    render(<App />);
+    message('multichar:show', { characters: [jane], maxCharacters: 1 });
+    expect(screen.queryByTestId('nav-target-next')).toBeNull();
+    expect((screen.getByRole('button', { name: 'Next' }) as HTMLButtonElement).disabled).toBe(true);
+  });
+
   it('labels profile cards from config and hides empty descriptions', () => {
     render(<App />);
     message('multichar:show', { characters: [jane], maxCharacters: 1 });

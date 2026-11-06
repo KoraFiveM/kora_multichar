@@ -6,7 +6,7 @@ import {
 } from "lucide-react";
 import { fetchNui } from "./nui";
 import {
-  characterName, isValidBirthdate, money, normalizeCharacters, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
+  characterName, isValidBirthdate, money, normalizeCharacters, slotTarget, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
 } from "./lib";
 import type { Character, NuiMessage, SceneDraft, SpawnLocation } from "./types";
 
@@ -396,6 +396,16 @@ function SceneTransition({ stage, previewStage, brand }: { stage: "characters" |
   </div>;
 }
 
+// Preview of where an arrow goes. Decorative for screen readers: the arrow's own
+// aria-label already names the target. Rendered between the two arrows so the
+// arrows stay the carousel's first and last children (their overlap styling).
+function NavTarget({ side, target }: { side: "prev" | "next"; target: NonNullable<ReturnType<typeof slotTarget>> }) {
+  return <span className={`nav-target ${side}${target.empty ? " empty" : ""}`} aria-hidden data-testid={`nav-target-${side}`}>
+    <span className="nav-target-slot">Character {target.slot}</span>
+    <span className="nav-target-name">{target.empty && <UserPlus size={11} />}{target.label}</span>
+  </span>;
+}
+
 function CharacterScreen(props: {
   characters: Character[]; character: Character | null; index: number; count: number; canCreate: boolean;
   brand: string; showNewBadge: boolean; profile: ProfileText;
@@ -407,6 +417,9 @@ function CharacterScreen(props: {
   const gang = character?.gang?.name && character.gang.name !== "none" ? character.gang : null;
   const position = String(props.index + 1).padStart(2, "0");
   const total = String(props.characters.length).padStart(2, "0");
+  const prev = slotTarget(props.characters, props.canCreate, props.index, -1);
+  const next = slotTarget(props.characters, props.canCreate, props.index, 1);
+  const targetLabel = (target: typeof prev) => target ? `Character ${target.slot}: ${target.label}` : undefined;
   return <>
     <header className="topbar">
       <div><span className="eyebrow brand-mark">{props.brand}</span><h1>Choose your story</h1></div>
@@ -415,7 +428,7 @@ function CharacterScreen(props: {
     <div className="scene-label"><Clapperboard size={13} />{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</div>
     {props.details && character && <Dossier character={character} profile={props.profile} onClose={props.onDetails} onDelete={props.onDelete} />}
     <section className="carousel-shell">
-      <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(-1)} aria-label="Previous"><ChevronLeft /></button>
+      <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(-1)} aria-label={prev ? `Previous, ${targetLabel(prev)}` : "Previous"} title={targetLabel(prev)}><ChevronLeft /></button>
       <div className={`identity-card character-card${character ? "" : " new-character-card"}`}>
         <div className="identity-mark" aria-hidden>{character ? characterInitials(character) : <UserPlus size={22} />}</div>
         <div className="identity-copy">
@@ -438,7 +451,9 @@ function CharacterScreen(props: {
           </button>
         </div>
       </div>
-      <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(1)} aria-label="Next"><ChevronRight /></button>
+      {prev && !props.details && <NavTarget side="prev" target={prev} />}
+      {next && !props.details && <NavTarget side="next" target={next} />}
+      <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(1)} aria-label={next ? `Next, ${targetLabel(next)}` : "Next"} title={targetLabel(next)}><ChevronRight /></button>
     </section>
     <div className="key-hints"><kbd>←</kbd><kbd>→</kbd><span>Browse</span><kbd>Enter</kbd><span>Continue</span></div>
   </>;

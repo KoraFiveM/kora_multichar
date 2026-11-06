@@ -48,6 +48,12 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .nav-button:first-child { margin-right: -15px; }
 .nav-button:last-child { margin-left: -15px; }
 .nav-button svg { display: block; transform: translateY(-.5px); }
+.nav-target { position: absolute; bottom: calc(100% + 10px); display: flex; max-width: 180px; flex-direction: column; gap: 2px; border: 1px solid hsl(var(--border)); border-radius: 9px; padding: 5px 9px; background: hsl(var(--card) / .92); box-shadow: var(--shadow-soft); pointer-events: none; }
+.nav-target.prev { left: 0; align-items: flex-start; }
+.nav-target.next { right: 0; align-items: flex-end; text-align: right; }
+.nav-target-slot { color: hsl(var(--muted-foreground)); font-size: 9px; font-weight: 750; letter-spacing: .08em; text-transform: uppercase; }
+.nav-target-name { display: inline-flex; max-width: 100%; align-items: center; gap: 4px; overflow: hidden; color: hsl(var(--foreground) / .92); font-size: 11px; font-weight: 650; text-overflow: ellipsis; white-space: nowrap; }
+.nav-target.empty .nav-target-name { color: hsl(var(--primary)); }
 .nav-button:hover { transform: scale(1.06); border-color: hsl(var(--brand-border)); background: hsl(var(--surface-hover)); color: hsl(var(--foreground)); }
 .nav-button:disabled { cursor: default; transform: none; border-color: hsl(var(--border)); background: hsl(var(--card)); color: hsl(var(--muted-foreground) / .45); box-shadow: none; } /* dim the icon, not the circle: a translucent circle shows the card edge through it */
 .identity-card { position: relative; border: 1px solid hsl(var(--border) / .85); border-radius: 15px; background: hsl(var(--card)); box-shadow: var(--shadow-panel); pointer-events: auto; overflow: hidden; }
@@ -181,6 +187,7 @@ input[aria-invalid="true"], select[aria-invalid="true"] { border-color: hsl(var(
   .identity-copy h2 { margin: 3px 0 5px; font-size: 18px; }
   .identity-meta { flex-wrap: wrap; }
   .nav-button { width: 40px; height: 40px; }
+  .nav-target { display: none; }
   .dossier { bottom: 176px; width: calc(100vw - 24px); max-height: 42vh; overflow: auto; padding: 12px; }
   .detail-list { grid-template-columns: 1fr; margin-top: 10px; }
   .toast { top: 12px; min-width: 0; width: calc(100vw - 24px); max-width: none; }

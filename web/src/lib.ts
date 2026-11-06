@@ -34,6 +34,21 @@ export function wrapIndex(index: number, delta: number, count: number): number {
   return count ? (index + delta + count) % count : 0;
 }
 
+export type SlotTarget = { slot: number; label: string; empty: boolean };
+
+// What an arrow leads to: the carousel position it lands on (shown as
+// "Character N") and that character's name, or the free create slot.
+// null when there is nowhere else to go (the arrows are disabled then).
+export function slotTarget(characters: Character[], canCreate: boolean, index: number, delta: number): SlotTarget | null {
+  const count = characters.length + (canCreate ? 1 : 0);
+  if (count <= 1) return null;
+  const next = wrapIndex(index, delta, count);
+  const character = characters[next];
+  return character
+    ? { slot: next + 1, label: characterName(character), empty: false }
+    : { slot: next + 1, label: "Create New Character", empty: true };
+}
+
 // Spawn previews are raced against a timeout so the selector can never sit on
 // "Scouting your arrival" forever. The budget comes from Lua
 // (SceneRuntime.spawnPreviewBudgetMs), which derives it from the flight and
