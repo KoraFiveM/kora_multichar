@@ -1,4 +1,4 @@
-local function revealCameras(focalOffset, focalLookAt, focalFov, establishingOffset, establishingLookAt, establishingFov)
+local function revealCameras(focalOffset, focalLookAt, focalFov, establishingOffset, establishingLookAt, establishingFov, closeOffset, closeLookAt, closeFov)
     establishingOffset = establishingOffset or vector3(focalOffset.x * 1.62, focalOffset.y * 1.62, focalOffset.z + 2.35)
     establishingLookAt = establishingLookAt or focalLookAt
     return {
@@ -6,9 +6,9 @@ local function revealCameras(focalOffset, focalLookAt, focalFov, establishingOff
             id = 'close',
             -- Local +Y is in front of a character facing the scene anchor's
             -- heading, so every reveal opens on the face rather than the back.
-            offset = vector3(0.65, 2.65, 1.68),
-            lookAt = vector3(0.0, 0.0, 1.34),
-            fov = 30.0,
+            offset = closeOffset or vector3(0.65, 2.65, 1.68),
+            lookAt = closeLookAt or vector3(0.0, 0.0, 1.34),
+            fov = closeFov or 30.0,
             dof = { near = 0.8, far = 3.2, strength = 0.65 },
         },
         {
@@ -123,7 +123,12 @@ local bundledScenes = {
         },
         cameras = revealCameras(
             vector3(8.8, 7.8, 4.1), vector3(-1.4, 0.9, 0.8), 41.0,
-            vector3(16.5, 13.2, 8.2), vector3(-1.3, 0.4, 0.65), 54.0
+            vector3(16.5, 13.2, 8.2), vector3(-1.3, 0.4, 0.65), 54.0,
+            -- The default portrait aims at standing head height; the CPR pose is
+            -- kneeling, so the character fell to the bottom of the frame. Stay
+            -- inside the portrait's 3.2 depth-of-field far limit (blurred
+            -- beyond it) and use a wider fov to keep the pose in shot.
+            vector3(0.7, 2.7, 1.2), vector3(0.0, 0.0, 0.6), 38.0
         ),
         timeline = revealTimeline({
             { at = 450, type = 'vehicleState', target = 'ambulance', lights = true, siren = true, mutedSiren = true },
