@@ -39,7 +39,7 @@ describe('character selection', () => {
   it('previews after the debounce but logs in only when Continue is pressed', () => {
     render(<App />);
     message('multichar:show', { characters: [jane], maxCharacters: 2 });
-    expect(screen.getByText('Jane Doe')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Jane Doe' })).toBeTruthy();
     expect(screen.getByText('Setting your scene')).toBeTruthy();
     expect(nui.fetch).not.toHaveBeenCalledWith('multichar:select', expect.anything());
 
@@ -52,19 +52,19 @@ describe('character selection', () => {
     expect(nui.fetch).toHaveBeenCalledWith('multichar:select', { citizenid: 'JANE1' });
   });
 
-  it('names the character or free slot each arrow leads to, and shows nothing with a single slot', () => {
+  it('lists every slot on the right, names the character or free slot each arrow leads to, and disables the arrows with a single slot', () => {
     const bob = { ...jane, citizenid: 'BOB2', cid: 2, charinfo: { ...jane.charinfo, firstname: 'Bob' } };
     const { unmount } = render(<App />);
     message('multichar:show', { characters: [jane, bob], maxCharacters: 3 });
-    expect(screen.getByTestId('nav-target-next').textContent).toBe('Character 2Bob Doe');
-    expect(screen.getByTestId('nav-target-prev').textContent).toBe('Character 3Create New Character');
+    expect(screen.getByTestId('slot-rail').textContent).toBe('Jane DoeBob DoeNew character');
+    expect(document.querySelector('.profile-count')?.textContent).toBe('1 of 3');
     expect(screen.getByRole('button', { name: 'Next, Character 2: Bob Doe' })).toBeTruthy();
     expect(screen.getByRole('button', { name: 'Previous, Character 3: Create New Character' })).toBeTruthy();
     unmount();
 
     render(<App />);
     message('multichar:show', { characters: [jane], maxCharacters: 1 });
-    expect(screen.queryByTestId('nav-target-next')).toBeNull();
+    expect(screen.getByTestId('slot-rail').textContent).toBe('Jane Doe');
     expect((screen.getByRole('button', { name: 'Next' }) as HTMLButtonElement).disabled).toBe(true);
   });
 
@@ -92,8 +92,8 @@ describe('character selection', () => {
   it('shows dossier fields and requires the exact typed name before deletion', () => {
     render(<App />);
     message('multichar:show', { characters: [jane], maxCharacters: 1 });
-    expect(screen.getByText('SELECTED IDENTITY')).toBeTruthy();
-    expect(document.querySelector('.profile-count')?.textContent).toBe('01/01');
+    expect(screen.getByRole('heading', { name: 'Jane Doe' })).toBeTruthy();
+    expect(document.querySelector('.profile-count')?.textContent).toBe('1 of 1');
     fireEvent.click(screen.getByRole('button', { name: /profile/i }));
 
     for (const value of ['Police', 'Sergeant', 'Ballas', 'Soldier', '$12,500 bank', '$250 cash', '2000-02-29', 'Canada', 'JANE1']) {
@@ -135,7 +135,7 @@ describe('character selection', () => {
     render(<App />);
     message('multichar:show', { characters: [jane, bob], maxCharacters: 2 });
     fireEvent.keyDown(window, { key: 'ArrowRight' });
-    expect(screen.getByText('Bob Doe')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Bob Doe' })).toBeTruthy();
     message('multichar:previewReady', { scene: 'police', ok: true });
     fireEvent.keyDown(window, { key: 'Enter' });
     expect(nui.fetch).toHaveBeenCalledWith('multichar:select', { citizenid: 'BOB2' });
@@ -586,7 +586,7 @@ describe('branding, theme and nationality', () => {
     expect(document.querySelector('.new-slot-chip')).toBeNull();
     cleanup();
     openCreateWith({ showNewSlotBadge: true });
-    expect(document.querySelector('.new-slot-chip')!.textContent).toBe('NEW');
+    expect(document.querySelector('.new-slot-chip')!.textContent).toBe('New');
   });
 
   it('renders no decorative accent rail in the create dialog', () => {

@@ -1,8 +1,8 @@
 import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
 import {
-  Box, Briefcase, CalendarDays, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clapperboard, Copy,
-  Crosshair, Fingerprint, Flag, Info, LoaderCircle, LogOut, MapPin, MousePointer2,
-  Plane, Play, Plus, Save, Sparkles, Trash2, UserPlus, Users, Wallet, X,
+  Box, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clapperboard, Copy,
+  Crosshair, LoaderCircle, LogOut, MapPin, MousePointer2,
+  Play, Plus, Save, Sparkles, Trash2, X,
 } from "lucide-react";
 import { fetchNui } from "./nui";
 import {
@@ -349,7 +349,7 @@ export function App() {
 
   return (
     <div className={`app stage-${stage}`}>
-      {toast && <div className="toast"><Sparkles size={16} /><span>{toast}</span><button onClick={() => setToast(null)}><X size={15} /></button></div>}
+      {toast && <div className="toast"><span>{toast}</span><button aria-label="Dismiss" onClick={() => setToast(null)}><X size={15} /></button></div>}
       {stage === "characters" && (
         <CharacterScreen
           characters={characters} character={character} index={index} count={slideCount} canCreate={canCreate}
@@ -360,11 +360,11 @@ export function App() {
           onDisconnect={() => (confirmDisconnect ? setDisconnecting(true) : fetchNui("multichar:disconnect"))}
         />
       )}
-      {stage === "spawn" && <SpawnScreen location={spawn} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} locked={spawnLock && (previewing || spawnTraveling)} hints={spawnHints} onMove={move} onAccept={accept} />}
+      {stage === "spawn" && <SpawnScreen location={spawn} locations={spawns} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} locked={spawnLock && (previewing || spawnTraveling)} hints={spawnHints} onMove={move} onAccept={accept} />}
       {stage === "creator" && creatorDraft && (
         <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
       )}
-      {previewing && !creating && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} brand={uiSettings.brandName} />}
+      {previewing && !creating && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} />}
       {creating && <CreateDialog ui={uiSettings} draft={createDraft} onDraft={setCreateDraft} closeOnBackdrop={closeCreateOnBackdrop} confirmDiscard={confirmDiscard} onClose={() => setCreating(false)} onBusy={setBusy} />}
       {disconnecting && <DisconnectDialog onClose={() => setDisconnecting(false)} />}
       {deleting && character && <DeleteDialog character={character} onClose={() => setDeleting(false)} onBusy={setBusy} />}
@@ -376,7 +376,7 @@ const PREVIEW_STAGE_TEXT: Record<string, string> = {
   streaming: "Streaming the area around your arrival point",
 };
 
-function SceneTransition({ stage, previewStage, brand }: { stage: "characters" | "spawn"; previewStage?: string | null; brand: string }) {
+function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn"; previewStage?: string | null }) {
   // The subtitle names what is actually being waited on when Lua has told us.
   // A world stream can legitimately take tens of seconds, and a fixed
   // "streaming the world" line for all of it is indistinguishable from a hung
@@ -385,10 +385,7 @@ function SceneTransition({ stage, previewStage, brand }: { stage: "characters" |
     || "Streaming the world and finding a clear camera angle";
 
   return <div className="scene-transition" role="status" aria-live="polite">
-    <div className="transition-frame" aria-hidden><span /><span /><span /></div>
     <div className="transition-content">
-      <span className="transition-brand">{brand} · CINEMATIC</span>
-      <div className="transition-pulse"><Clapperboard size={20} /></div>
       <h2>{stage === "spawn" ? "Scouting your arrival" : "Setting your scene"}</h2>
       <p>{detail}</p>
       <div className="transition-progress"><i /></div>
@@ -396,13 +393,21 @@ function SceneTransition({ stage, previewStage, brand }: { stage: "characters" |
   </div>;
 }
 
-// Preview of where an arrow goes. Decorative for screen readers: the arrow's own
-// aria-label already names the target. Rendered between the two arrows so the
-// arrows stay the carousel's first and last children (their overlap styling).
-function NavTarget({ side, target }: { side: "prev" | "next"; target: NonNullable<ReturnType<typeof slotTarget>> }) {
-  return <span className={`nav-target ${side}${target.empty ? " empty" : ""}`} aria-hidden data-testid={`nav-target-${side}`}>
-    <span className="nav-target-slot">Character {target.slot}</span>
-    <span className="nav-target-name">{target.empty && <UserPlus size={11} />}{target.label}</span>
+// Every slot, in order, down the right edge. Display only: the arrows and the
+// keyboard are what move the selection, so it never takes the pointer.
+function SlotRail({ labels, selected }: { labels: string[]; selected: number }) {
+  return <ul className="slot-rail" data-testid="slot-rail" aria-hidden>
+    {labels.map((label, i) => <li key={`${i}-${label}`} className={i === selected ? "on" : undefined}>{label}</li>)}
+  </ul>;
+}
+
+function SlotNav({ position, total, prevLabel, nextLabel, prevTitle, nextTitle, disabled, onMove }: {
+  position: number; total: number; prevLabel: string; nextLabel: string; prevTitle?: string; nextTitle?: string; disabled: boolean; onMove: (delta: number) => void;
+}) {
+  return <span className="third-nav">
+    <button className="nav-button" disabled={disabled} onClick={() => onMove(-1)} aria-label={prevLabel} title={prevTitle}><ChevronLeft size={18} /></button>
+    <span className="profile-count">{position} of {total}</span>
+    <button className="nav-button" disabled={disabled} onClick={() => onMove(1)} aria-label={nextLabel} title={nextTitle}><ChevronRight size={18} /></button>
   </span>;
 }
 
@@ -413,73 +418,55 @@ function CharacterScreen(props: {
   onMove: (delta: number) => void; onAccept: () => void; onDetails: () => void; onCreate: () => void; onDelete: () => void; onDisconnect: () => void;
 }) {
   const { character } = props;
-  const job = character ? roleLabel(character.job, "Civilian") : "Create a new story";
+  const job = character ? roleLabel(character.job, "Civilian") : "";
   const gang = character?.gang?.name && character.gang.name !== "none" ? character.gang : null;
-  const position = String(props.index + 1).padStart(2, "0");
-  const total = String(props.characters.length).padStart(2, "0");
   const prev = slotTarget(props.characters, props.canCreate, props.index, -1);
   const next = slotTarget(props.characters, props.canCreate, props.index, 1);
   const targetLabel = (target: typeof prev) => target ? `Character ${target.slot}: ${target.label}` : undefined;
+  const slots = [...props.characters.map(characterName), ...(props.canCreate ? ["New character"] : [])];
   return <>
-    <header className="topbar">
-      <div><span className="eyebrow brand-mark">{props.brand}</span><h1>Choose your story</h1></div>
-      <button className="icon-button" aria-label="Disconnect" onClick={props.onDisconnect}><LogOut size={18} /></button>
-    </header>
-    <div className="scene-label"><Clapperboard size={13} />{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</div>
+    <span className="brand-mark corner-brand">{props.brand}</span>
+    <button className="quiet-button corner-action" aria-label="Disconnect" onClick={props.onDisconnect}><LogOut size={15} />Disconnect</button>
     {props.details && character && <Dossier character={character} profile={props.profile} onClose={props.onDetails} onDelete={props.onDelete} />}
-    <section className="carousel-shell">
-      <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(-1)} aria-label={prev ? `Previous, ${targetLabel(prev)}` : "Previous"} title={targetLabel(prev)}><ChevronLeft /></button>
-      <div className={`identity-card character-card${character ? "" : " new-character-card"}`}>
-        <div className="identity-mark" aria-hidden>{character ? characterInitials(character) : <UserPlus size={22} />}</div>
-        <div className="identity-copy">
-          <div className="identity-kicker">
-            <span className="eyebrow">{character ? "SELECTED IDENTITY" : "AVAILABLE CHARACTER SLOT"}</span>
-            {character ? <span className="profile-count"><strong>{position}</strong><i>/</i>{total}</span> : props.showNewBadge ? <span className="new-slot-chip">NEW</span> : null}
-          </div>
-          <h2>{character ? characterName(character) : "Create character"}</h2>
-          {character ? <div className="identity-meta">
-            <span className="career-label"><Briefcase size={13} />{job}</span>
-            <span className="rank-chip">{gradeLabel(character.job)}</span>
-            {gang && <span className="affiliation-chip"><Users size={12} />{roleLabel(gang, gang.name || "Affiliation")}</span>}
-          </div> : <p>Use this slot to begin a new story in Los Santos.</p>}
-        </div>
-        <div className="identity-actions">
-          {character && <button className="button ghost profile-button" aria-expanded={props.details} onClick={props.onDetails}><Info size={16} />Profile</button>}
-          <button className="button primary" disabled={props.busy || props.previewing} onClick={props.onAccept}>
-            {props.busy ? <LoaderCircle className="spin" size={17} /> : character ? <Play size={17} fill="currentColor" /> : <UserPlus size={17} />}
-            {character ? "Continue" : "Create"}
-          </button>
-        </div>
+    <section className={`lower-third${character ? "" : " new-character"}`}>
+      <p className="third-kicker">{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</p>
+      <h2>{character ? characterName(character) : "Create character"}{!character && props.showNewBadge && <span className="new-slot-chip">New</span>}</h2>
+      <p className="third-meta">{character ? [job, gradeLabel(character.job), gang ? roleLabel(gang, gang.name || "Affiliation") : null].filter(Boolean).join(" · ") : "Use this slot to begin a new story in Los Santos."}</p>
+      <div className="third-actions">
+        <button className="button primary" disabled={props.busy || props.previewing} onClick={props.onAccept}>
+          {props.busy ? <LoaderCircle className="spin" size={16} /> : null}
+          {character ? "Continue" : "Create"}
+        </button>
+        {character && <button className="button ghost profile-button" aria-expanded={props.details} onClick={props.onDetails}>Profile</button>}
+        <SlotNav position={props.index + 1} total={props.count} disabled={props.count <= 1} onMove={props.onMove}
+          prevLabel={prev ? `Previous, ${targetLabel(prev)}` : "Previous"} nextLabel={next ? `Next, ${targetLabel(next)}` : "Next"} prevTitle={targetLabel(prev)} nextTitle={targetLabel(next)} />
       </div>
-      {prev && !props.details && <NavTarget side="prev" target={prev} />}
-      {next && !props.details && <NavTarget side="next" target={next} />}
-      <button className="nav-button" disabled={props.count <= 1} onClick={() => props.onMove(1)} aria-label={next ? `Next, ${targetLabel(next)}` : "Next"} title={targetLabel(next)}><ChevronRight /></button>
     </section>
+    <SlotRail labels={slots} selected={props.index} />
     <div className="key-hints"><kbd>←</kbd><kbd>→</kbd><span>Browse</span><kbd>Enter</kbd><span>Continue</span></div>
   </>;
 }
 
 function Dossier({ character, profile, onClose, onDelete }: { character: Character; profile: ProfileText; onClose: () => void; onDelete: () => void }) {
   const gang = character.gang?.name && character.gang.name !== "none" ? character.gang : null;
-  const card = (key: ProfileCard, icon: ReactNode, value: string, detail?: string) => {
+  const card = (key: ProfileCard, value: string, detail?: string) => {
     const text = detail === undefined ? profile[key].description : detail;
-    return <div>{icon}<span><small>{profile[key].label}</small><strong>{value}</strong>{text && <em>{text}</em>}</span></div>;
+    return <div><span><small>{profile[key].label}</small><strong>{value}</strong>{text && <em>{text}</em>}</span></div>;
   };
   return <aside className="dossier panel">
     <div className="dossier-heading">
-      <div className="identity-mark compact" aria-hidden>{characterInitials(character)}</div>
-      <div><span className="eyebrow">CHARACTER PROFILE</span><h3>{characterName(character)}</h3><p>{roleLabel(character.job, "Civilian")} · {gradeLabel(character.job)}</p></div>
+      <div><h3>{characterName(character)}</h3><p>{roleLabel(character.job, "Civilian")} · {gradeLabel(character.job)}</p></div>
       <button className="icon-button" aria-label="Close profile" onClick={onClose}><X size={16} /></button>
     </div>
     <div className="detail-list">
-      {card("career", <Briefcase />, roleLabel(character.job, "Civilian"), gradeLabel(character.job))}
-      {card("affiliation", <Users />, gang ? roleLabel(gang, gang.name || "Gang") : "None", gang ? gradeLabel(gang) : "Independent")}
-      {card("finances", <Wallet />, `${money(character.money?.bank)} bank`, `${money(character.money?.cash)} cash`)}
-      {card("birthDate", <CalendarDays />, character.charinfo?.birthdate || "Unknown")}
-      {card("nationality", <Flag />, character.charinfo?.nationality || "Unknown")}
-      {card("citizenId", <Fingerprint />, character.citizenid)}
+      {card("career", roleLabel(character.job, "Civilian"), gradeLabel(character.job))}
+      {card("affiliation", gang ? roleLabel(gang, gang.name || "Gang") : "None", gang ? gradeLabel(gang) : "Independent")}
+      {card("finances", `${money(character.money?.bank)} bank`, `${money(character.money?.cash)} cash`)}
+      {card("birthDate", character.charinfo?.birthdate || "Unknown")}
+      {card("nationality", character.charinfo?.nationality || "Unknown")}
+      {card("citizenId", character.citizenid)}
     </div>
-    <button className="danger-link" onClick={onDelete}><Trash2 size={14} />Delete character</button>
+    <button className="danger-link" onClick={onDelete}>Delete character</button>
   </aside>;
 }
 
@@ -568,7 +555,7 @@ function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onC
     fetchNui("multichar:create", { firstname, lastname, birthdate, nationality, gender });
   };
   return <div className="modal-layer"><div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined} /><form ref={formRef} noValidate className="modal panel create-modal" onSubmit={submit}>
-    <div className="panel-heading"><div><span className="eyebrow">NEW IDENTITY</span><h3>Create character</h3></div><button type="button" className="icon-button" aria-label="Close" onClick={requestClose}><X size={16} /></button></div>
+    <div className="panel-heading"><h3>Create character</h3><button type="button" className="icon-button" aria-label="Close" onClick={requestClose}><X size={16} /></button></div>
     <p className="modal-copy">Build the identity. You will customize appearance immediately after spawning.</p>
     <div className="field-grid">
       <div className="field"><label>First name<input name="firstname" autoFocus maxLength={24} required aria-invalid={!!errors.firstname} aria-describedby={errors.firstname ? "create-firstname-error" : undefined} value={draft.firstname} onChange={(event) => setField("firstname", event.target.value)} /></label><FieldError id="create-firstname-error" message={errors.firstname} /></div>
@@ -582,7 +569,7 @@ function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onC
     </div>
     <div className="segmented" aria-label="Body model"><button type="button" className={draft.gender === 0 ? "active" : ""} onClick={() => { setField("gender", 0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male</button><button type="button" className={draft.gender === 1 ? "active" : ""} onClick={() => { setField("gender", 1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female</button></div>
     {asking && <div className="discard-prompt" role="alertdialog" aria-label="Discard details"><p>Discard the identity details you entered?</p><div className="modal-actions"><button type="button" className="button ghost" onClick={keepEditing}>Keep editing</button><button type="button" className="button destructive" onClick={requestClose}>Discard</button></div></div>}
-    {!asking && <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>Cancel</button><button className="button primary"><UserPlus size={16} />Create identity</button></div>}
+    {!asking && <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>Cancel</button><button className="button primary">Create identity</button></div>}
   </form></div>;
 }
 
@@ -597,35 +584,37 @@ function DisconnectDialog({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
   return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><div className="modal panel disconnect-modal" role="alertdialog" aria-label="Disconnect">
-    <div className="modal-rail danger" /><div className="panel-heading"><div><span className="eyebrow">LEAVE SERVER</span><h3>Disconnect?</h3></div><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16} /></button></div>
+    <div className="panel-heading"><h3>Disconnect?</h3><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16} /></button></div>
     <p className="modal-copy">You will leave the server and return to the main menu.</p>
-    <div className="modal-actions"><button className="button ghost" onClick={onClose}>Cancel</button><button className="button destructive" autoFocus onClick={() => { onClose(); fetchNui("multichar:disconnect"); }}><LogOut size={16} />Disconnect</button></div>
+    <div className="modal-actions"><button className="button ghost" onClick={onClose}>Cancel</button><button className="button destructive" autoFocus onClick={() => { onClose(); fetchNui("multichar:disconnect"); }}>Disconnect</button></div>
   </div></div>;
 }
 
 function DeleteDialog({ character, onClose, onBusy }: { character: Character; onClose: () => void; onBusy: (value: boolean) => void }) {
   const name = characterName(character); const [typed, setTyped] = useState("");
   return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><div className="modal panel delete-modal">
-    <div className="modal-rail danger" /><div className="panel-heading"><div><span className="eyebrow">PERMANENT ACTION</span><h3>Delete {name}?</h3></div><button className="icon-button" onClick={onClose}><X size={16} /></button></div>
+    <div className="panel-heading"><h3>Delete {name}?</h3><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16} /></button></div>
     <p className="modal-copy">This cannot be undone. Type <strong>{name}</strong> to confirm.</p>
     <label>Character name<input value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus /></label>
-    <div className="modal-actions"><button className="button ghost" onClick={onClose}>Cancel</button><button className="button destructive" disabled={typed !== name} onClick={() => { onBusy(true); onClose(); fetchNui("multichar:delete", { citizenid: character.citizenid }); }}><Trash2 size={16} />Delete forever</button></div>
+    <div className="modal-actions"><button className="button ghost" onClick={onClose}>Cancel</button><button className="button destructive" disabled={typed !== name} onClick={() => { onBusy(true); onClose(); fetchNui("multichar:delete", { citizenid: character.citizenid }); }}>Delete forever</button></div>
   </div></div>;
 }
 
-function SpawnScreen({ location, index, count, busy, previewing, traveling, locked, hints, onMove, onAccept }: { location: SpawnLocation | null; index: number; count: number; busy: boolean; previewing: boolean; traveling: boolean; locked: boolean; hints: SpawnHints; onMove: (delta: number) => void; onAccept: () => void }) {
+function SpawnScreen({ location, locations, index, count, busy, previewing, traveling, locked, hints, onMove, onAccept }: { location: SpawnLocation | null; locations: SpawnLocation[]; index: number; count: number; busy: boolean; previewing: boolean; traveling: boolean; locked: boolean; hints: SpawnHints; onMove: (delta: number) => void; onAccept: () => void }) {
   return <>
-    <header className="topbar"><div><span className="eyebrow">ARRIVAL</span><h1>Where do you wake up?</h1></div><span className="mandatory-chip">Selection required</span></header>
-    {traveling && <div className="travel-indicator" role="status"><Plane size={15} /><span>Flying to <strong>{location?.label}</strong></span></div>}
-    <section className="carousel-shell spawn-carousel">
-      <button className="nav-button" disabled={count <= 1 || busy || locked} onClick={() => onMove(-1)} aria-label="Previous location"><ChevronLeft /></button>
-      <div className="identity-card spawn-card">
-        <div className="location-icon"><MapPin size={22} /></div>
-        <div className="identity-copy"><span className="eyebrow">LOCATION {count ? index + 1 : 0} OF {count}</span><h2>{location?.label || "Loading locations"}</h2><p>{location?.description || "Preparing a safe arrival point…"}</p></div>
-        <button className="button primary" disabled={!location || busy || previewing || traveling} onClick={onAccept}>{busy ? <LoaderCircle className="spin" size={17} /> : <MapPin size={17} />}Spawn here</button>
+    <header className="corner-title"><h1>Where do you wake up?</h1></header>
+    <section className="lower-third spawn-third">
+      {traveling
+        ? <p className="third-kicker" role="status">Flying to <strong>{location?.label}</strong></p>
+        : <p className="third-kicker">Arrival point</p>}
+      <h2>{location?.label || "Loading locations"}</h2>
+      <p className="third-meta">{location?.description || "Preparing a safe arrival point…"}</p>
+      <div className="third-actions">
+        <button className="button primary" disabled={!location || busy || previewing || traveling} onClick={onAccept}>{busy ? <LoaderCircle className="spin" size={16} /> : null}Spawn here</button>
+        <SlotNav position={count ? index + 1 : 0} total={count} disabled={count <= 1 || busy || locked} onMove={onMove} prevLabel="Previous location" nextLabel="Next location" />
       </div>
-      <button className="nav-button" disabled={count <= 1 || busy || locked} onClick={() => onMove(1)} aria-label="Next location"><ChevronRight /></button>
     </section>
+    <SlotRail labels={locations.map((entry) => entry.label)} selected={index} />
     <div className="key-hints"><kbd>A</kbd><kbd>←</kbd><span>{hints.previous}</span><kbd>D</kbd><kbd>→</kbd><span>{hints.next}</span><span>{traveling ? hints.flying : hints.preview}</span><kbd>Enter</kbd><span>{hints.spawn}</span></div>
   </>;
 }
@@ -640,7 +629,7 @@ function CreatorScreen({ draft, scenes, cursor, exported }: { draft: SceneDraft;
   const sceneOptions = useMemo(() => Object.keys(scenes).sort(), [scenes]);
   return <div className="creator-shell">
     <header className="creator-top panel">
-      <div><span className="eyebrow">CINEMATIC TOOLS</span><h2>Scene Studio</h2></div>
+      <div><span className="eyebrow">Cinematic tools</span><h2>Scene Studio</h2></div>
       <select value={scenes[draft.id] ? draft.id : ""} onChange={(event) => event.target.value && creatorAction("load", { id: event.target.value })}><option value="">Unsaved draft</option>{sceneOptions.map((id) => <option key={id} value={id}>{scenes[id].label} · {id}</option>)}</select>
       <button className="button ghost" onClick={() => creatorAction("new")}><Plus size={15} />New</button>
       <button className="button ghost" onClick={() => creatorAction("duplicate")}><Copy size={15} />Duplicate</button>

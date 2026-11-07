@@ -22,18 +22,19 @@ describe('text selection', () => {
 });
 
 describe("edge insets", () => {
-  it("keeps the top bar icon buttons away from the viewport edge", () => {
-    expect(css).toMatch(/\.topbar \{[^}]*left: var\(--topbar-inset\); right: var\(--topbar-inset\)/);
-    expect(css).toMatch(/--topbar-inset: calc\(var\(--edge-inset\) \+ 28px\)/);
+  it("keeps the corner text and the disconnect button away from the viewport edge", () => {
+    expect(css).toMatch(/\.corner-brand, \.corner-title \{[^}]*left: var\(--side-inset\)/);
+    expect(css).toMatch(/\.corner-action \{[^}]*right: var\(--side-inset\)/);
+    expect(css).toMatch(/--side-inset: 36px/);
   });
 
   it("never shrinks the inset below 16px on small screens", () => {
-    expect(css).toMatch(/@media \(max-width: 720px\) \{\s*:root \{ --edge-inset: 16px; --topbar-inset: var\(--edge-inset\); \}/);
+    expect(css).toMatch(/@media \(max-width: 720px\) \{\s*:root \{ --edge-inset: 16px; --side-inset: 16px; \}/);
     expect(css).not.toMatch(/(right|left): 8px/);
   });
 
-  it("pads panel close buttons from the panel edge", () => {
-    expect(css).toMatch(/\.dossier-heading, \.panel-heading \{ padding-right: 4px; \}/);
+  it("pads the profile panel so its close button clears the edge", () => {
+    expect(css).toMatch(/\.dossier \{[^}]*padding: 16px 18px/);
   });
 });
 
@@ -47,7 +48,7 @@ describe("theme", () => {
   it("follows kora_theme font variables with the original stacks as fallbacks", () => {
     expect(css).toMatch(/html, body, #root, button, input, select, textarea \{ font-family: var\(--font-sans\); \}/);
     expect(css).toMatch(/h1, h2, h3 \{ font-family: var\(--font-heading, var\(--font-sans\)\); \}/);
-    expect(css).toMatch(/kbd \{[^}]*font: 700 13px var\(--font-mono, ui-monospace, monospace\);/);
+    expect(css).toMatch(/kbd \{[^}]*font: 500 12px var\(--font-mono, ui-monospace, monospace\);/);
     expect(css).toMatch(/\.json-editor textarea \{[^}]*font-family: var\(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace\);/);
     expect(css).toMatch(/\.cue-add input \{[^}]*font-family: var\(--font-mono, ui-monospace, monospace\);/);
     // Every font-family outside @font-face goes through a theme variable.
@@ -58,19 +59,20 @@ describe("theme", () => {
   it("drops the decorative accent rail, gradients and coloured glows", () => {
     expect(css).not.toMatch(/\.identity-card::before/);
     expect(css).not.toMatch(/gradient\(/);
-    expect(css).not.toMatch(/box-shadow: 0 0 \d/);
+    // A focus ring (0 0 0 Npx) is fine; a blurred glow (0 0 Npx) is not.
+    expect(css).not.toMatch(/box-shadow: 0 0 [1-9]/);
   });
 
   it("centres icon buttons without inherited padding", () => {
-    expect(css).toMatch(/\.icon-button \{[^}]*place-items: center;[^}]*padding: 0; box-sizing: border-box/);
+    expect(css).toMatch(/\.icon-button, \.quiet-button \{[^}]*align-items: center; justify-content: center;[^}]*padding: 0; box-sizing: border-box/);
     expect(css).toMatch(/\.icon-button svg \{ display: block;/);
   });
 });
 
 describe("nav buttons", () => {
-  it("keeps disabled arrows opaque so the card edge does not show through the circle", () => {
+  it("dims disabled arrows through the icon colour, not opacity", () => {
     const rule = css.match(/\.nav-button:disabled \{([^}]*)\}/)?.[1] ?? "";
     expect(rule).not.toMatch(/opacity/);
-    expect(rule).toMatch(/background: hsl\(var\(--card\)\)/);
+    expect(rule).toMatch(/color: hsl\(var\(--muted-foreground\) \/ \.45\)/);
   });
 });
