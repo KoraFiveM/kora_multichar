@@ -14,7 +14,9 @@
   --shadow-soft: var(--shadow-low);
   --shadow-panel: var(--shadow-floating);
   /* Keeps white text legible over any scene without drawing a box behind it. */
-  --scene-text-shadow: 0 1px 8px hsl(var(--background) / .85);
+  --scene-text-shadow: 0 0 2px hsl(var(--background) / .9), 0 1px 3px hsl(var(--background) / .85), 0 2px 14px hsl(var(--background) / .8);
+  /* Brighter than --muted-foreground so overlay labels hold up on sand and sky; theme-owned token untouched. */
+  --scene-muted: hsl(var(--foreground) / .85);
 }
 html, body, #root, button, input, select, textarea { font-family: var(--font-sans); }
 h1, h2, h3 { font-family: var(--font-heading, var(--font-sans)); }
@@ -41,7 +43,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 
 /* Corners */
 .corner-brand, .corner-title { position: absolute; z-index: 2; top: 28px; left: var(--side-inset); text-shadow: var(--scene-text-shadow); }
-.corner-brand { color: hsl(var(--muted-foreground)); font-size: 13px; font-weight: 500; }
+.corner-brand { color: var(--scene-muted); font-size: 13px; font-weight: 500; }
 .corner-title h1 { margin: 0; font-size: 18px; font-weight: 600; }
 .corner-action { position: absolute; z-index: 2; top: 20px; right: var(--side-inset); }
 .eyebrow { color: hsl(var(--muted-foreground)); font-size: 12px; font-weight: 500; }
@@ -54,14 +56,14 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 
 /* Lower third: the selected character, or the selected arrival point */
 .lower-third { position: absolute; z-index: 2; left: var(--side-inset); bottom: var(--side-inset); display: grid; width: min(480px, calc(100vw - 2 * var(--side-inset))); gap: 5px; text-shadow: var(--scene-text-shadow); }
-.third-kicker { margin: 0; color: hsl(var(--muted-foreground)); font-size: 13px; }
+.third-kicker { margin: 0; color: var(--scene-muted); font-size: 13px; }
 .third-kicker strong { color: hsl(var(--foreground)); font-weight: 600; }
 .lower-third h2 { margin: 0; font-size: 30px; font-weight: 600; line-height: 1.15; overflow-wrap: anywhere; }
-.third-meta { margin: 0; color: hsl(var(--muted-foreground)); font-size: 15px; line-height: 1.45; max-width: 44ch; }
+.third-meta { margin: 0; color: var(--scene-muted); font-size: 15px; line-height: 1.45; max-width: 44ch; }
 .third-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 12px; text-shadow: none; }
 .third-nav { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; }
-.profile-count { min-width: 3.4em; color: hsl(var(--muted-foreground)); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; }
-.new-slot-chip { margin-left: 10px; color: hsl(var(--muted-foreground)); font-size: 13px; font-weight: 500; }
+.profile-count { min-width: 3.4em; color: var(--scene-muted); font-size: 13px; text-align: center; font-variant-numeric: tabular-nums; text-shadow: var(--scene-text-shadow); }
+.new-slot-chip { margin-left: 10px; color: var(--scene-muted); font-size: 13px; font-weight: 500; }
 .nav-button { display: grid; flex: none; width: 34px; height: 34px; place-items: center; border: 0; border-radius: var(--radius-sm); padding: 0; background: hsl(var(--surface-raised)); color: hsl(var(--foreground)); cursor: pointer; transition: background-color .14s, color .14s; }
 .nav-button:hover:not(:disabled) { background: hsl(var(--surface-hover)); }
 .nav-button:disabled { cursor: default; color: hsl(var(--muted-foreground) / .45); }
@@ -69,7 +71,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 
 /* Slot list on the right edge: display only */
 .slot-rail { position: absolute; z-index: 2; right: var(--side-inset); top: 50%; display: grid; max-width: 260px; margin: 0; padding: 0; transform: translateY(-50%); list-style: none; text-align: right; text-shadow: var(--scene-text-shadow); pointer-events: none; }
-.slot-rail li { overflow: hidden; padding: 4px 0; color: hsl(var(--muted-foreground)); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
+.slot-rail li { overflow: hidden; padding: 4px 0; color: var(--scene-muted); font-size: 15px; text-overflow: ellipsis; white-space: nowrap; }
 .slot-rail li.on { color: hsl(var(--foreground)); font-weight: 500; }
 .slot-rail li.on::before { content: ""; display: inline-block; width: 6px; height: 6px; margin-right: 10px; border-radius: 50%; background: hsl(var(--primary)); vertical-align: middle; }
 
@@ -80,7 +82,7 @@ html, body, #root { width: 100vw; height: 100vh; margin: 0; overflow: hidden; ba
 .button.ghost { background: hsl(var(--surface-raised)); color: hsl(var(--foreground)); }
 .button.ghost:hover { background: hsl(var(--surface-hover)); }
 .button.destructive { background: hsl(var(--destructive-soft)); color: hsl(var(--destructive)); }
-.key-hints { position: absolute; z-index: 2; right: var(--side-inset); bottom: var(--side-inset); display: flex; align-items: center; gap: 8px; color: hsl(var(--muted-foreground)); font-size: 13px; white-space: nowrap; text-shadow: var(--scene-text-shadow); }
+.key-hints { position: absolute; z-index: 2; right: var(--side-inset); bottom: var(--side-inset); display: flex; align-items: center; gap: 8px; color: var(--scene-muted); font-size: 13px; white-space: nowrap; text-shadow: var(--scene-text-shadow); }
 kbd { border: 0; border-radius: 4px; background: hsl(var(--surface-raised)); padding: 2px 7px; color: hsl(var(--foreground)); font: 500 12px var(--font-mono, ui-monospace, monospace); text-shadow: none; }
 
 /* Profile: plain facts above the caption */

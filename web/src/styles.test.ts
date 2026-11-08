@@ -69,6 +69,28 @@ describe("theme", () => {
   });
 });
 
+describe("scene text legibility", () => {
+  it("layers the scene text shadow so it has a tight dark edge plus a soft glow", () => {
+    const shadow = css.match(/--scene-text-shadow: ([^;]*);/)?.[1] ?? "";
+    expect(shadow.split(/,(?![^(]*\))/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("draws overlay labels in the brighter scene colour, not plain muted grey", () => {
+    for (const selector of [".corner-brand", ".third-kicker", ".third-meta", ".slot-rail li", ".key-hints", ".profile-count", ".new-slot-chip"]) {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rule = css.match(new RegExp(`${escaped} \\{([^}]*)\\}`))?.[1] ?? "";
+      expect(rule, selector).toMatch(/color: var\(--scene-muted\)/);
+      expect(rule, selector).not.toMatch(/color: hsl\(var\(--muted-foreground\)\)/);
+    }
+    expect(css).toMatch(/--scene-muted: hsl\(var\(--foreground\) \/ \.85\)/);
+  });
+
+  it("gives the profile counter its own text shadow, while the action row keeps none", () => {
+    expect(css).toMatch(/\.profile-count \{[^}]*text-shadow: var\(--scene-text-shadow\)/);
+    expect(css).toMatch(/\.third-actions \{[^}]*text-shadow: none/);
+  });
+});
+
 describe("nav buttons", () => {
   it("dims disabled arrows through the icon colour, not opacity", () => {
     const rule = css.match(/\.nav-button:disabled \{([^}]*)\}/)?.[1] ?? "";
