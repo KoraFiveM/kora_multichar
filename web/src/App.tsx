@@ -1,17 +1,15 @@
-import { FormEvent, type ReactNode, useEffect, useMemo, useRef, useState } from "react";
-import {
-  Box, Camera, CheckCircle2, ChevronDown, ChevronLeft, ChevronRight, ChevronUp, Clapperboard, Copy,
-  Crosshair, LoaderCircle, LogOut, MapPin, MousePointer2,
-  Play, Plus, Save, Sparkles, Trash2, X,
-} from "lucide-react";
+import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
+import { ChevronLeft, ChevronRight, LoaderCircle, LogOut, X } from "lucide-react";
+import { CreatorScreen } from "./Creator";
 import { fetchNui } from "./nui";
 import {
-  characterName, isValidBirthdate, money, normalizeCharacters, slotTarget, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
+  characterName, isValidBirthdate, money, normalizeCharacters, parseLibrary, slotTarget, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
 } from "./lib";
+import type { ModelLibrary } from "./lib";
 import type { Character, NuiMessage, SceneDraft, SpawnLocation } from "./types";
 
 type Stage = "hidden" | "characters" | "spawn" | "creator";
-type CreatorPayload = { draft?: SceneDraft; scenes?: Record<string, SceneDraft>; cursor?: boolean; error?: string };
+type CreatorPayload = { draft?: SceneDraft; scenes?: Record<string, SceneDraft>; cursor?: boolean; error?: string; library?: unknown; placing?: boolean; selected?: string };
 type UiSettings = {
   brandName: string; showNewSlotBadge: boolean; nationalities: string[]; defaultNationality: string; allowFreeTextNationality: boolean;
   profile: ProfileText;
@@ -135,6 +133,9 @@ export function App() {
   const [creatorScenes, setCreatorScenes] = useState<Record<string, SceneDraft>>({});
   const [creatorCursor, setCreatorCursor] = useState(true);
   const [exported, setExported] = useState<string | null>(null);
+  const [creatorLibrary, setCreatorLibrary] = useState<ModelLibrary>({});
+  const [creatorPlacing, setCreatorPlacing] = useState(false);
+  const [creatorFocus, setCreatorFocus] = useState<string | null>(null);
 
   const canCreate = characters.length < maxCharacters;
   const slideCount = characters.length + (canCreate ? 1 : 0);
@@ -197,12 +198,14 @@ export function App() {
         setStage("spawn"); setBusy(false); setSpawnIndex(0); setPreviewing(true); setSpawnTraveling(false);
       } else if (action === "multichar:creator:show") {
         const payload = data as CreatorPayload;
-        setCreatorDraft(payload.draft ?? null); setCreatorScenes(payload.scenes ?? {}); setCreatorCursor(payload.cursor !== false); setStage("creator");
+        setCreatorDraft(payload.draft ?? null); setCreatorScenes(payload.scenes ?? {}); setCreatorCursor(payload.cursor !== false); setCreatorLibrary(parseLibrary(payload.library)); setCreatorPlacing(false); setCreatorFocus(null); setStage("creator");
       } else if (action === "multichar:creator:state") {
         const payload = data as CreatorPayload;
         if (payload.draft) setCreatorDraft(payload.draft);
         if (payload.scenes) setCreatorScenes(payload.scenes);
         if (typeof payload.cursor === "boolean") setCreatorCursor(payload.cursor);
+        setCreatorPlacing(payload.placing === true);
+        if (payload.selected) setCreatorFocus(payload.selected);
         if (payload.error) setToast(payload.error);
       } else if (action === "multichar:creator:cursor") setCreatorCursor((data as { cursor?: boolean })?.cursor === true);
       else if (action === "multichar:creator:close") setStage("hidden");
@@ -362,7 +365,7 @@ export function App() {
       )}
       {stage === "spawn" && <SpawnScreen location={spawn} locations={spawns} index={spawnIndex} count={spawns.length} busy={busy} previewing={previewing} traveling={spawnTraveling} locked={spawnLock && (previewing || spawnTraveling)} hints={spawnHints} onMove={move} onAccept={accept} />}
       {stage === "creator" && creatorDraft && (
-        <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} />
+        <CreatorScreen key={creatorDraft.id} draft={creatorDraft} scenes={creatorScenes} cursor={creatorCursor} exported={exported} library={creatorLibrary} placing={creatorPlacing} focusId={creatorFocus} />
       )}
       {previewing && !creating && (stage === "characters" || stage === "spawn") && <SceneTransition stage={stage} previewStage={previewStage} />}
       {creating && <CreateDialog ui={uiSettings} draft={createDraft} onDraft={setCreateDraft} closeOnBackdrop={closeCreateOnBackdrop} confirmDiscard={confirmDiscard} onClose={() => setCreating(false)} onBusy={setBusy} />}
@@ -617,92 +620,4 @@ function SpawnScreen({ location, locations, index, count, busy, previewing, trav
     <SlotRail labels={locations.map((entry) => entry.label)} selected={index} />
     <div className="key-hints"><kbd>A</kbd><kbd>←</kbd><span>{hints.previous}</span><kbd>D</kbd><kbd>→</kbd><span>{hints.next}</span><span>{traveling ? hints.flying : hints.preview}</span><kbd>Enter</kbd><span>{hints.spawn}</span></div>
   </>;
-}
-
-const creatorAction = (action: string, payload: unknown = {}) => fetchNui("multichar:creator:action", { action, payload });
-
-function CreatorScreen({ draft, scenes, cursor, exported }: { draft: SceneDraft; scenes: Record<string, SceneDraft>; cursor: boolean; exported: string | null }) {
-  const [cueText, setCueText] = useState('{"at":5200,"type":"camera","camera":"establishing","transitionMs":2400}');
-  const [selectorText, setSelectorText] = useState(JSON.stringify(draft.selectors ?? [], null, 2));
-  const [scrub, setScrub] = useState(0);
-  useEffect(() => setSelectorText(JSON.stringify(draft.selectors ?? [], null, 2)), [draft.id, draft.selectors]);
-  const sceneOptions = useMemo(() => Object.keys(scenes).sort(), [scenes]);
-  return <div className="creator-shell">
-    <header className="creator-top panel">
-      <div><span className="eyebrow">Cinematic tools</span><h2>Scene Studio</h2></div>
-      <select value={scenes[draft.id] ? draft.id : ""} onChange={(event) => event.target.value && creatorAction("load", { id: event.target.value })}><option value="">Unsaved draft</option>{sceneOptions.map((id) => <option key={id} value={id}>{scenes[id].label} · {id}</option>)}</select>
-      <button className="button ghost" onClick={() => creatorAction("new")}><Plus size={15} />New</button>
-      <button className="button ghost" onClick={() => creatorAction("duplicate")}><Copy size={15} />Duplicate</button>
-      <button className={`button ${cursor ? "primary" : "ghost"}`} onClick={() => creatorAction("toggleMode")}><MousePointer2 size={15} />{cursor ? "Cursor" : "Freecam"}</button>
-      <button className="icon-button" onClick={() => creatorAction("close")}><X /></button>
-    </header>
-    <aside className="creator-left panel">
-      <CreatorSection title="Scene" icon={<Clapperboard size={15} />}>
-        <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { creatorAction("metadata", { id: form.get("id"), label: form.get("label"), priority: Number(form.get("priority")), selectors: JSON.parse(selectorText) }); } catch { /* Lua returns useful validation on preview */ } }}>
-          <label>ID<input name="id" defaultValue={draft.id} /></label><label>Label<input name="label" defaultValue={draft.label} /></label><label>Priority<input name="priority" type="number" defaultValue={draft.priority} /></label>
-          <label>Selectors JSON<textarea rows={4} value={selectorText} onChange={(event) => setSelectorText(event.target.value)} /></label><button className="mini-button"><Save size={13} />Apply metadata</button>
-        </form>
-      </CreatorSection>
-      <CreatorSection title="Environment" icon={<Sparkles size={15} />}>
-        <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); const strength = String(form.get("strength") ?? ""); creatorAction("environment", { hour: Number(form.get("hour")), minute: Number(form.get("minute")), weather: form.get("weather"), timecycle: form.get("timecycle") || undefined, strength: strength === "" ? undefined : Number(strength) }); }}>
-          <div className="field-grid"><label>Hour<input name="hour" type="number" min="0" max="23" defaultValue={Number(draft.environment?.hour ?? 18)} /></label><label>Minute<input name="minute" type="number" min="0" max="59" defaultValue={Number(draft.environment?.minute ?? 0)} /></label></div>
-          <label>Weather<input name="weather" defaultValue={String(draft.environment?.weather ?? "CLEAR")} /></label><label>Timecycle<input name="timecycle" defaultValue={String(draft.environment?.timecycle ?? "")} /></label><label>Strength<input name="strength" type="number" step="0.05" min="0" max="1" defaultValue={Number(draft.environment?.strength ?? 0)} /></label><button className="mini-button"><Save size={13} />Apply environment</button>
-        </form>
-      </CreatorSection>
-      <button className="wide-tool" onClick={() => creatorAction("setAnchor")}><MapPin size={15} />Set anchor at crosshair</button>
-      <button className="wide-tool" onClick={() => creatorAction("placeCharacter")}><Crosshair size={15} />Place character at crosshair</button>
-    </aside>
-    <aside className="creator-right panel">
-      <CreatorSection title={`Entities · ${draft.entities.length}`} icon={<Box size={15} />}>
-        <div className="object-list">{draft.entities.map((entity, index) => <div className="object-editor" key={entity.id}>
-          <div className="object-row"><span><strong>{entity.id}</strong><small>{entity.type} · {String(entity.model)}</small></span><div className="row-tools">
-            <button aria-label={`Move ${entity.id} up`} disabled={index === 0} onClick={() => creatorAction("reorderEntity", { index: index + 1, delta: -1 })}><ChevronUp size={13} /></button>
-            <button aria-label={`Move ${entity.id} down`} disabled={index === draft.entities.length - 1} onClick={() => creatorAction("reorderEntity", { index: index + 1, delta: 1 })}><ChevronDown size={13} /></button>
-            <button aria-label={`Delete ${entity.id}`} onClick={() => creatorAction("removeEntity", { id: entity.id })}><Trash2 size={13} /></button>
-          </div></div>
-          <JsonEditor label="Edit entity data" value={entity} onSave={(value) => creatorAction("replaceEntity", { originalId: entity.id, value })} />
-        </div>)}</div>
-        <form className="inline-add" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); creatorAction("addEntity", { id: form.get("id"), type: form.get("type"), model: form.get("model") }); }}>
-          <input name="id" placeholder="unique_id" required /><select name="type"><option value="ped">NPC</option><option value="vehicle">Vehicle</option><option value="prop">Prop</option></select><input name="model" placeholder="model name" required /><button className="mini-button"><Crosshair size={13} />Place</button>
-        </form>
-      </CreatorSection>
-      <CreatorSection title={`Cameras · ${draft.cameras.length}`} icon={<Camera size={15} />}>
-        <div className="object-list">{draft.cameras.map((camera, index) => <div className="object-editor" key={camera.id}>
-          <div className="object-row"><span><strong>{camera.id}</strong><small>FOV {String(camera.fov ?? 45)}</small></span><div className="row-tools">
-            <button aria-label={`Move ${camera.id} up`} disabled={index === 0} onClick={() => creatorAction("reorderCamera", { index: index + 1, delta: -1 })}><ChevronUp size={13} /></button>
-            <button aria-label={`Move ${camera.id} down`} disabled={index === draft.cameras.length - 1} onClick={() => creatorAction("reorderCamera", { index: index + 1, delta: 1 })}><ChevronDown size={13} /></button>
-            <button aria-label={`Delete ${camera.id}`} disabled={draft.cameras.length <= 1} onClick={() => creatorAction("removeCamera", { id: camera.id })}><Trash2 size={13} /></button>
-          </div></div>
-          <JsonEditor label="Edit camera data" value={camera} onSave={(value) => creatorAction("replaceCamera", { index: index + 1, value })} />
-        </div>)}</div>
-        <form className="inline-add" onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); creatorAction("captureCamera", { id: form.get("id"), fov: Number(form.get("fov")), transitionMs: 900 }); }}><input name="id" placeholder="shot_id" required /><input name="fov" type="number" min="10" max="100" defaultValue="45" /><button className="mini-button"><Camera size={13} />Capture</button></form>
-      </CreatorSection>
-    </aside>
-    <section className="timeline panel">
-      <div className="timeline-heading"><span><Clapperboard size={15} /><strong>Timeline</strong></span><label>Duration <input type="number" defaultValue={draft.timeline.durationMs} onBlur={(event) => creatorAction("timeline", { durationMs: Number(event.target.value), loop: draft.timeline.loop })} /></label><label className="check"><input type="checkbox" checked={draft.timeline.loop} onChange={(event) => creatorAction("timeline", { durationMs: draft.timeline.durationMs, loop: event.target.checked })} />Loop</label></div>
-      <input className="scrubber" type="range" min="0" max={draft.timeline.durationMs || 1} value={scrub} onChange={(event) => { const at = Number(event.target.value); setScrub(at); creatorAction("scrub", { at }); }} />
-      <div className="cue-list">{draft.timeline.cues.map((cue, i) => <div className="cue-editor" key={`${String(cue.type)}-${i}`}>
-        <div className="cue"><b>{Number(cue.at ?? 0) / 1000}s</b><span>{String(cue.type)}</span><div className="row-tools">
-          <button aria-label="Move cue up" disabled={i === 0} onClick={() => creatorAction("reorderCue", { index: i + 1, delta: -1 })}><ChevronUp size={12} /></button>
-          <button aria-label="Move cue down" disabled={i === draft.timeline.cues.length - 1} onClick={() => creatorAction("reorderCue", { index: i + 1, delta: 1 })}><ChevronDown size={12} /></button>
-          <button aria-label="Delete cue" onClick={() => creatorAction("removeCue", { index: i + 1 })}><X size={12} /></button>
-        </div></div>
-        <JsonEditor label="Edit cue data" value={cue} onSave={(value) => creatorAction("replaceCue", { index: i + 1, value })} />
-      </div>)}</div>
-      <div className="cue-add"><input value={cueText} onChange={(event) => setCueText(event.target.value)} /><button className="mini-button" onClick={() => { try { creatorAction("addCue", JSON.parse(cueText)); } catch { /* keep editable */ } }}><Plus size={13} />Add cue JSON</button></div>
-    </section>
-    <footer className="creator-actions panel"><button className="button ghost" onClick={() => creatorAction("validate")}><CheckCircle2 size={15} />Validate</button><button className="button ghost" onClick={() => creatorAction("preview")}><Play size={15} />Play timeline</button><button className="button ghost" onClick={() => creatorAction("exportRegister")}><Copy size={15} />Copy registration</button><button className="button primary" onClick={() => creatorAction("exportConfig")}><Copy size={15} />Copy config</button>{exported && <span className="export-toast">{exported}</span>}</footer>
-  </div>;
-}
-
-function CreatorSection({ title, icon, children }: { title: string; icon: ReactNode; children: ReactNode }) {
-  return <section className="creator-section"><h3>{icon}{title}</h3>{children}</section>;
-}
-
-function JsonEditor({ label, value, onSave }: { label: string; value: unknown; onSave: (value: Record<string, unknown>) => void }) {
-  const serialized = JSON.stringify(value, null, 2);
-  const [text, setText] = useState(serialized);
-  const [error, setError] = useState(false);
-  useEffect(() => { setText(serialized); setError(false); }, [serialized]);
-  return <details className="json-editor"><summary>{label}</summary><textarea rows={7} value={text} onChange={(event) => setText(event.target.value)} />{error && <small>Enter a valid JSON object.</small>}<button className="mini-button" onClick={() => { try { const parsed = JSON.parse(text); if (!parsed || Array.isArray(parsed) || typeof parsed !== "object") throw new Error(); setError(false); onSave(parsed); } catch { setError(true); } }}><Save size={12} />Apply JSON</button></details>;
 }

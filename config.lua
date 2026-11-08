@@ -191,6 +191,38 @@ Config.creator = {
     fastMultiplier = 3.0,
     lookSensitivity = 5.0,
     placementDistance = 8.0,
+    -- Models offered by the studio's Add picker. Plain `{ model, label }` rows;
+    -- the picker also accepts any model name typed in, so this list only has to
+    -- cover the common cases. Names are checked in game (IsModelInCdimage)
+    -- before an entity is added, so a typo here shows an error, not a broken scene.
+    library = {
+        ped = {
+            { 's_m_y_xmech_02', 'Mechanic' }, { 's_m_y_construct_01', 'Construction worker' },
+            { 's_m_y_cop_01', 'Police officer' }, { 's_m_m_doctor_01', 'Doctor' },
+            { 's_f_y_scrubs_01', 'Nurse' }, { 's_m_m_security_01', 'Security guard' },
+            { 'a_m_y_business_01', 'Businessman' }, { 'a_f_y_business_01', 'Businesswoman' },
+            { 'a_m_y_hipster_01', 'Hipster (m)' }, { 'a_f_y_hipster_01', 'Hipster (f)' },
+            { 'a_m_y_skater_01', 'Skater' }, { 'a_f_y_tourist_01', 'Tourist' },
+            { 'a_m_m_hillbilly_01', 'Hillbilly' }, { 's_m_y_dealer_01', 'Dealer' },
+            { 'g_m_y_ballaeast_01', 'Ballas member' }, { 'g_m_y_famca_01', 'Families member' },
+        },
+        vehicle = {
+            { 'sultan', 'Sultan' }, { 'buffalo', 'Buffalo' }, { 'dominator', 'Dominator' },
+            { 'comet2', 'Comet' }, { 'adder', 'Adder' }, { 'zentorno', 'Zentorno' },
+            { 'kuruma', 'Kuruma' }, { 'futo', 'Futo' }, { 'blista', 'Blista' },
+            { 'bison', 'Bison' }, { 'sandking', 'Sandking' }, { 'rebel', 'Rebel' },
+            { 'police', 'Police cruiser' }, { 'ambulance', 'Ambulance' }, { 'taxi', 'Taxi' },
+            { 'bati', 'Bati 801' }, { 'sanchez', 'Sanchez' }, { 'faggio', 'Faggio' },
+        },
+        prop = {
+            { 'prop_tool_box_04', 'Toolbox' }, { 'prop_toolchest_05', 'Tool chest' },
+            { 'prop_bin_08', 'Bin' }, { 'prop_bench_01a', 'Bench' },
+            { 'prop_table_03', 'Table' }, { 'prop_chair_01a', 'Chair' },
+            { 'prop_laptop_01a', 'Laptop' }, { 'prop_generator_03b', 'Generator' },
+            { 'prop_roadcone02a', 'Road cone' }, { 'prop_barrier_work06a', 'Work barrier' },
+            { 'prop_beach_fire', 'Campfire' }, { 'prop_cs_beer_bot_01', 'Beer bottle' },
+        },
+    },
 }
 
 -- The spawn-picker's fixed location list, always offered alongside "last

@@ -386,6 +386,70 @@ describe('spawn and studio', () => {
     expect(nui.fetch).toHaveBeenCalledWith('multichar:creator:action', { action: 'placeCharacter', payload: {} });
   });
 
+  describe('scene studio add flow', () => {
+    const draft = {
+      id: 'test_scene', label: 'Test Scene', priority: 0, selectors: [], environment: { hour: 18, minute: 0, weather: 'CLEAR' },
+      character: { offset: { x: 0, y: 0, z: 0, w: 0 } },
+      entities: [{ id: 'prop_1', type: 'prop', model: 'prop_tool_box_04', offset: { x: 1, y: 2, z: 0, w: 0 } }],
+      cameras: [{ id: 'hero', offset: { x: 1, y: 1, z: 1 }, lookAt: { x: 0, y: 0, z: 0 } }],
+      timeline: { durationMs: 10000, loop: true, cues: [] },
+    };
+    const library = { ped: [['s_m_y_cop_01', 'Police officer'], ['a_m_y_skater_01', 'Skater']], vehicle: [['sultan', 'Sultan']], prop: [['prop_tool_box_04', 'Toolbox']] };
+    const open = () => { render(<App />); message('multichar:creator:show', { draft, scenes: {}, cursor: true, library }); nui.fetch.mockClear(); };
+
+    it('adds from the list with only a type and a model: no id or type to type', () => {
+      open();
+      fireEvent.click(screen.getByRole('button', { name: /^ped$/i }));
+      fireEvent.click(screen.getByRole('button', { name: /police officer/i }));
+      expect(nui.fetch).toHaveBeenCalledWith('multichar:creator:action', { action: 'addEntity', payload: { type: 'ped', model: 's_m_y_cop_01' } });
+      expect(screen.queryByLabelText('Search models')).toBeNull();
+    });
+
+    it('filters the list and accepts any typed model name with Enter', () => {
+      open();
+      fireEvent.click(screen.getByRole('button', { name: /^vehicle$/i }));
+      const search = screen.getByLabelText('Search models');
+      fireEvent.change(search, { target: { value: 'zentorno' } });
+      expect(screen.queryByRole('button', { name: /sultan/i })).toBeNull();
+      fireEvent.submit(search.closest('form')!);
+      expect(nui.fetch).toHaveBeenCalledWith('multichar:creator:action', { action: 'addEntity', payload: { type: 'vehicle', model: 'zentorno' } });
+    });
+
+    it('Escape and Back leave the picker without adding anything', () => {
+      open();
+      fireEvent.click(screen.getByRole('button', { name: /^prop$/i }));
+      fireEvent.keyDown(screen.getByLabelText('Search models'), { key: 'Escape' });
+      expect(screen.queryByLabelText('Search models')).toBeNull();
+      expect(nui.fetch).not.toHaveBeenCalled();
+    });
+
+    it('selects an entity to reveal Move, and Move sends the id', () => {
+      open();
+      expect(screen.queryByRole('button', { name: /^move$/i })).toBeNull();
+      fireEvent.click(screen.getByRole('button', { name: /prop_1/ }));
+      fireEvent.click(screen.getByRole('button', { name: /^move$/i }));
+      expect(nui.fetch).toHaveBeenCalledWith('multichar:creator:action', { action: 'moveEntity', payload: { id: 'prop_1' } });
+    });
+
+    it('selects the entity Lua just added and steps aside while the placement tool runs', () => {
+      open();
+      message('multichar:creator:state', { draft, selected: 'prop_1' });
+      expect(screen.getByRole('button', { name: /^move$/i })).toBeTruthy();
+      message('multichar:creator:state', { draft, placing: true });
+      expect(screen.queryByText('Scene Studio')).toBeNull();
+      message('multichar:creator:state', { draft, placing: false });
+      expect(screen.getByText('Scene Studio')).toBeTruthy();
+    });
+
+    it('keeps cameras and timeline one tab away', () => {
+      open();
+      fireEvent.click(screen.getByRole('tab', { name: /cameras/i }));
+      expect(screen.getByText('hero')).toBeTruthy();
+      fireEvent.click(screen.getByRole('tab', { name: /timeline/i }));
+      expect(screen.getByLabelText('Scrub timeline')).toBeTruthy();
+    });
+  });
+
   it('does not softlock on the loading cover when a brand-new account browses its single slide', () => {
     render(<App />);
     message('multichar:show', { characters: [], maxCharacters: 1 });

@@ -11,6 +11,7 @@ local creator = {
     camCoords = nil,
     camRot = nil,
     instructions = nil,
+    placing = false,
 }
 local creatorToggleBinding
 local updateUi
@@ -76,7 +77,7 @@ local function startEditorCamera()
 end
 
 local function setCursor(enabled)
-    if not creator.active then return end
+    if not creator.active or creator.placing then return end
     creator.cursor = enabled
     if not enabled then
         local started, err = startEditorCamera()
@@ -111,13 +112,36 @@ local function placementPoint()
     return { x = coords.x, y = coords.y, z = coords.z, w = GetEntityHeading(PlayerPedId()) }
 end
 
-updateUi = function(errorMessage)
+-- `selected` (an entity id) tells the panel which row to select; nil leaves the
+-- player's current selection alone.
+updateUi = function(errorMessage, selected)
     send('multichar:creator:state', {
         draft = creator.draft,
         scenes = creator.catalog,
         cursor = creator.cursor,
+        placing = creator.placing,
+        selected = selected,
         error = errorMessage,
     })
+end
+
+local ENTITY_LIMIT_KEY = { ped = 'maxPeds', vehicle = 'maxVehicles', prop = 'maxProps' }
+
+-- ped_1, vehicle_2, prop_3 ... first free number, so nobody types an id.
+local function nextEntityId(kind)
+    local used = {}
+    for _, entity in ipairs(creator.draft.entities) do used[entity.id] = true end
+    local n = 1
+    while used[('%s_%d'):format(kind, n)] do n = n + 1 end
+    return ('%s_%d'):format(kind, n)
+end
+
+local function round2(value) return math.floor(value * 100 + 0.5) / 100 end
+
+local function findEntity(id)
+    for _, entity in ipairs(creator.draft.entities) do
+        if entity.id == id then return entity end
+    end
 end
 
 local function validateDraft()
@@ -142,6 +166,70 @@ local function refreshPreview()
     if not creator.cursor then startEditorCamera() end
     updateUi()
     return true
+end
+
+-- Adds an entity at the crosshair. The panel sends only a type and a model: the
+-- id is generated, the model is checked here, and the new row comes back selected.
+local function addEntity(payload)
+    local kind = ENTITY_LIMIT_KEY[payload.type] and payload.type or 'prop'
+    local model = type(payload.model) == 'string' and payload.model:match('^%s*(.-)%s*$') or ''
+    if model == '' or #model > 64 or model:find('[^%w_%-]') then
+        updateUi('Enter a model name using letters, numbers and underscores.')
+        return
+    end
+    local hash = joaat(model)
+    if not IsModelInCdimage(hash) or not IsModelValid(hash) then
+        updateUi(('"%s" is not a model in the game.'):format(model))
+        return
+    end
+    local count = 0
+    for _, entity in ipairs(creator.draft.entities) do if entity.type == kind then count = count + 1 end end
+    local limit = Config.sceneLimits[ENTITY_LIMIT_KEY[kind]]
+    if limit and count >= limit then
+        updateUi(('This scene is at its limit of %d %s entities.'):format(limit, kind))
+        return
+    end
+    local id = nextEntityId(kind)
+    local offset = SceneSchema.worldToLocal(creator.draft.anchor, placementPoint())
+    creator.draft.entities[#creator.draft.entities + 1] = { id = id, type = kind, model = model, offset = offset }
+    if refreshPreview() then updateUi(nil, id) end
+end
+
+-- Hands the object to kora_lib's placement tool (surface snap, camera, numeric
+-- input, confirm/cancel), then writes the confirmed transform back. The studio's
+-- own freecam and NUI focus are released for the duration and restored after,
+-- whether the player confirms or cancels.
+local function moveEntity(id)
+    local entity = not creator.placing and findEntity(id)
+    if not entity then return end
+    creator.placing = true
+    destroyEditorCamera()
+    SceneRuntime.cleanupScene()
+    SetNuiFocus(false, false)
+    updateUi(nil, id)
+    local world = SceneSchema.localToWorld(creator.draft.anchor, entity.offset)
+    CreateThread(function()
+        local ok, result = pcall(function()
+            return Kora.placement.start(entity.model, {
+                coords = { x = world.x, y = world.y, z = world.z },
+                rotation = { pitch = 0.0, roll = 0.0, yaw = world.w },
+                copy = false,
+            })
+        end)
+        creator.placing = false
+        if not creator.active then return end
+        SetNuiFocus(creator.cursor, creator.cursor)
+        local failure
+        if ok and type(result) == 'table' and result.coords then
+            local moved = SceneSchema.worldToLocal(creator.draft.anchor, {
+                x = result.coords.x, y = result.coords.y, z = result.coords.z, w = result.heading or world.w,
+            })
+            entity.offset = { x = round2(moved.x), y = round2(moved.y), z = round2(moved.z), w = round2(moved.w) }
+        elseif not ok then
+            failure = 'Placement could not start for this model.'
+        end
+        if refreshPreview() and failure then updateUi(failure) end
+    end)
 end
 
 local function exportDraft(registerCall)
@@ -222,7 +310,7 @@ RegisterNetEvent('qbmultichar:client:openCreator', function(catalog)
     creator.cursor, creator.camCoords, creator.camRot = true, nil, nil
     SceneRuntime.beginMode()
     SetNuiFocus(true, true)
-    send('multichar:creator:show', { draft = creator.draft, scenes = creator.catalog, cursor = true })
+    send('multichar:creator:show', { draft = creator.draft, scenes = creator.catalog, cursor = true, library = Config.creator.library })
 end)
 
 RegisterCommand('qbmultichar_creator_toggle', function()
@@ -236,7 +324,7 @@ creatorToggleBinding = Kora.keybind.add({
 })
 
 RegisterNUICallback('multichar:creator:action', function(data, cb)
-    if not creator.active or type(data) ~= 'table' then cb({ ok = false }); return end
+    if not creator.active or creator.placing or type(data) ~= 'table' then cb({ ok = false }); return end
     local action, payload = data.action, type(data.payload) == 'table' and data.payload or {}
     if action == 'close' then closeCreator()
     elseif action == 'toggleMode' then setCursor(not creator.cursor)
@@ -274,14 +362,8 @@ RegisterNUICallback('multichar:creator:action', function(data, cb)
         updateUi()
     elseif action == 'placeCharacter' then
         creator.draft.character.offset = SceneSchema.worldToLocal(creator.draft.anchor, placementPoint()); updateUi()
-    elseif action == 'addEntity' then
-        local world = placementPoint()
-        creator.draft.entities[#creator.draft.entities + 1] = {
-            id = payload.id or ('entity_%d'):format(#creator.draft.entities + 1),
-            type = payload.type or 'prop', model = payload.model or 'prop_tool_box_04',
-            offset = SceneSchema.worldToLocal(creator.draft.anchor, world),
-        }
-        refreshPreview()
+    elseif action == 'addEntity' then addEntity(payload)
+    elseif action == 'moveEntity' then moveEntity(payload.id)
     elseif action == 'updateEntity' then
         for _, entity in ipairs(creator.draft.entities) do if entity.id == payload.originalId then
             for key, value in pairs(payload.values or {}) do entity[key] = value end

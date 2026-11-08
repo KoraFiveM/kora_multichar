@@ -72,3 +72,37 @@ export function spawnPreviewTimeout(budgetMs: unknown): number {
   }
   return budgetMs + SPAWN_PREVIEW_HEADROOM_MS;
 }
+
+// Scene studio model picker. The library arrives from Config.creator.library as
+// `[model, label]` rows per entity type.
+export type EntityKind = "ped" | "vehicle" | "prop";
+export type ModelRow = [model: string, label: string];
+export type ModelLibrary = Partial<Record<EntityKind, ModelRow[]>>;
+export const KIND_LABEL: Record<EntityKind, string> = { ped: "Ped", vehicle: "Vehicle", prop: "Prop" };
+
+const MODEL_NAME = /^[A-Za-z0-9_-]{1,64}$/;
+
+export function parseLibrary(raw: unknown): ModelLibrary {
+  const source = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
+  const library: ModelLibrary = {};
+  for (const kind of ["ped", "vehicle", "prop"] as const) {
+    const rows = Array.isArray(source[kind]) ? source[kind] as unknown[] : [];
+    library[kind] = rows.flatMap((row): ModelRow[] => {
+      if (!Array.isArray(row) || typeof row[0] !== "string" || !row[0]) return [];
+      return [[row[0], typeof row[1] === "string" && row[1] ? row[1] : row[0]]];
+    });
+  }
+  return library;
+}
+
+// `matches`: library rows whose model or label contains the query.
+// `custom`: the typed text, offered as "use this model name" when it is a valid
+// model name that is not already an exact library entry.
+export function filterLibrary(library: ModelLibrary, kind: EntityKind, query: string): { matches: ModelRow[]; custom: string | null } {
+  const needle = query.trim().toLowerCase();
+  const rows = library[kind] ?? [];
+  const matches = needle ? rows.filter(([model, label]) => model.toLowerCase().includes(needle) || label.toLowerCase().includes(needle)) : rows;
+  const typed = query.trim();
+  const exact = rows.some(([model]) => model.toLowerCase() === needle);
+  return { matches, custom: typed && MODEL_NAME.test(typed) && !exact ? typed : null };
+}

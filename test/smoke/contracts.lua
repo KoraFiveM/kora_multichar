@@ -121,4 +121,24 @@ H.test('scene studio exports through clipboard without writing server files', fu
     H.truthy(creator:find('Kora.instructional.show({', 1, true), 'the studio should use kora_lib instructional buttons')
 end)
 
+H.test('scene studio adds by model and moves through kora_lib placement', function()
+    H.truthy(creator:find('IsModelInCdimage(hash)', 1, true) and creator:find('local function addEntity(payload)', 1, true), 'a model is checked before an entity is added')
+    H.truthy(creator:find('nextEntityId(kind)', 1, true), 'ids are generated, not typed')
+    H.falsy(creator:find("('entity_%d')", 1, true), 'the panel no longer supplies entity ids')
+    H.truthy(creator:find('Kora.placement.start(entity.model', 1, true), 'Move uses kora_lib placement')
+    H.truthy(creator:find('copy = false', 1, true), 'placement must not write the clipboard')
+    H.truthy(creator:find('SetNuiFocus(creator.cursor, creator.cursor)', 1, true), 'studio focus is restored after placement')
+    H.truthy(creator:find('creator.placing or type(data)', 1, true), 'panel actions are ignored while placing')
+    H.truthy(creator:find('library = Config.creator.library', 1, true), 'the picker library is sent to the panel')
+    local env = setmetatable({ vector3 = function(x, y, z) return { x = x, y = y, z = z } end, vector4 = function(x, y, z, w) return { x = x, y = y, z = z, w = w } end }, { __index = _G })
+    assert(loadfile(root .. 'config.lua', 't', env))()
+    local Config = env.Config
+    H.truthy(type(Config.creator.library) == 'table' and #Config.creator.library.ped > 0 and #Config.creator.library.vehicle > 0 and #Config.creator.library.prop > 0, 'library covers peds, vehicles and props')
+    for kind, rows in pairs(Config.creator.library) do
+        for _, row in ipairs(rows) do
+            H.truthy(type(row[1]) == 'string' and row[1]:match('^[%w_%-]+$') and type(row[2]) == 'string', ('library %s row must be { model, label }'):format(kind))
+        end
+    end
+end)
+
 H.report('contracts')

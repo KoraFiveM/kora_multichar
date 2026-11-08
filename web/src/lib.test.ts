@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  characterName, isValidBirthdate, normalizeCharacters, SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS,
+  characterName, filterLibrary, isValidBirthdate, normalizeCharacters, parseLibrary, SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS,
   SPAWN_PREVIEW_HEADROOM_MS, slotTarget, spawnPreviewTimeout, wrapIndex,
 } from "./lib";
 
@@ -57,5 +57,20 @@ describe("spawn preview timeout", () => {
     for (const value of [undefined, null, 0, -1, NaN, Infinity, "30000"]) {
       expect(spawnPreviewTimeout(value)).toBe(SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS);
     }
+  });
+});
+
+describe("studio model picker", () => {
+  const library = parseLibrary({ ped: [["s_m_y_cop_01", "Police officer"], ["a_m_y_skater_01", "Skater"], [7, "bad"]], prop: [] });
+  it("keeps well-formed rows and defaults missing kinds to empty", () => {
+    expect(library.ped).toEqual([["s_m_y_cop_01", "Police officer"], ["a_m_y_skater_01", "Skater"]]);
+    expect(library.vehicle).toEqual([]);
+    expect(parseLibrary(undefined).ped).toEqual([]);
+  });
+  it("searches model and label, and offers a typed model name only when it is not an exact entry", () => {
+    expect(filterLibrary(library, "ped", "").matches).toHaveLength(2);
+    expect(filterLibrary(library, "ped", "skat")).toEqual({ matches: [["a_m_y_skater_01", "Skater"]], custom: "skat" });
+    expect(filterLibrary(library, "ped", "S_M_Y_COP_01").custom).toBeNull();
+    expect(filterLibrary(library, "ped", "not a model!").custom).toBeNull();
   });
 });
