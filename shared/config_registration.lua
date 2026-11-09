@@ -1,5 +1,3 @@
--- The bundled scenes have finished extending Config.scenes by this point, so
--- they are included in the resource-owned kora_lib configuration catalog.
 local sceneOptions = {}
 for id, scene in pairs(Config.scenes) do
     sceneOptions[#sceneOptions + 1] = { value = id, label = scene.label or id }
@@ -110,6 +108,71 @@ Config.allowFreeTextNationality = Kora.config.boolean(Config.allowFreeTextNation
     live = true,
     label = 'Allow free-text nationality',
     description = 'When enabled, players type their nationality (the list is offered as suggestions) and the server accepts any 2 to 32 character value. When disabled the dropdown is the only way to choose and the server rejects values outside the list. Applies the next time character select opens.',
+})
+Config.arrival.enabled = Kora.config.boolean(Config.arrival.enabled, {
+    live = true,
+    label = 'Pick character and arrival point on one screen',
+    description = 'When enabled, character select also offers the arrival points; Play logs the character in and the camera flies from the character scene to the chosen arrival point, where the ped appears with a particle effect. When disabled, Continue opens the separate spawn picker that previews every location. Applies the next time character select opens.',
+})
+Config.arrival.skippable = Kora.config.boolean(Config.arrival.skippable, {
+    live = true,
+    label = 'Allow skipping the arrival flight',
+    description = 'When enabled, pressing Space during the arrival flight cuts the camera travel short. The destination still streams in and the ped is still placed normally.',
+})
+Config.arrival.settleMs = Kora.config.number(Config.arrival.settleMs, {
+    min = 0, max = 3000, live = true,
+    label = 'Arrival settle time (ms)',
+    description = 'How long the ped stays invisible after being placed at the arrival point, so their saved appearance is applied before they appear.',
+})
+Config.arrival.pedFadeMs = Kora.config.number(Config.arrival.pedFadeMs, {
+    min = 0, max = 5000, live = true,
+    label = 'Arrival ped fade-in (ms)',
+    description = 'How long the ped takes to fade in when the arrival effect starts. 0 shows the ped instantly.',
+})
+Config.arrival.handbackMs = Kora.config.number(Config.arrival.handbackMs, {
+    min = 0, max = 5000, live = true,
+    label = 'Camera hand-back time (ms)',
+    description = 'How long the camera takes to blend from the arrival shot back to the normal gameplay camera.',
+})
+Config.arrival.zOffset = Kora.config.number(Config.arrival.zOffset, {
+    min = -3.0, max = 3.0, live = true,
+    label = 'Arrival height offset',
+    description = 'Added to the arrival point\'s z when the ped is placed, in metres. The ped is not frozen, so it settles onto the ground while still invisible; this only changes the height it starts from. Use a negative value to start lower.',
+})
+Config.arrival.ptfx.enabled = Kora.config.boolean(Config.arrival.ptfx.enabled, {
+    live = true,
+    label = 'Play an effect when the ped arrives',
+    description = 'When enabled, the particle effect below plays at the ped when they arrive. If the asset or effect cannot be loaded the arrival continues without it.',
+})
+Config.arrival.ptfx.synced = Kora.config.boolean(Config.arrival.ptfx.synced, {
+    live = true,
+    label = 'Show the arrival effect to nearby players',
+    description = 'When enabled, players near the arrival see the effect too: the server checks the request and tells nearby clients to play the effect configured here. When disabled, only the arriving player sees it. Applies to the next arrival.',
+})
+Config.arrival.ptfx.syncRadius = Kora.config.number(Config.arrival.ptfx.syncRadius, {
+    min = 10.0, max = 500.0, live = true,
+    label = 'Arrival effect visibility radius',
+    description = 'How far from the arrival point, in metres, another player must be to be shown the effect. Only used when the effect is shown to nearby players.',
+})
+Config.arrival.ptfx.asset = Kora.config.string(Config.arrival.ptfx.asset, {
+    live = true, minLength = 1, maxLength = 64,
+    label = 'Arrival effect asset',
+    description = 'The particle asset (ptfx dictionary) that holds the arrival effect, for example scr_rcbarry1.',
+})
+Config.arrival.ptfx.effect = Kora.config.string(Config.arrival.ptfx.effect, {
+    live = true, minLength = 1, maxLength = 64,
+    label = 'Arrival effect name',
+    description = 'The effect to play from the asset above, for example scr_alien_teleport.',
+})
+Config.arrival.ptfx.scale = Kora.config.number(Config.arrival.ptfx.scale, {
+    min = 0.1, max = 10.0, live = true,
+    label = 'Arrival effect scale',
+    description = 'Size multiplier for the arrival effect.',
+})
+Config.arrival.ptfx.zOffset = Kora.config.number(Config.arrival.ptfx.zOffset, {
+    min = -5.0, max = 5.0, live = true,
+    label = 'Arrival effect height offset',
+    description = 'Raises or lowers the arrival effect relative to the ped\'s feet, in metres.',
 })
 Config.buckets.enabled = Kora.config.boolean(Config.buckets.enabled, {
     live = true,

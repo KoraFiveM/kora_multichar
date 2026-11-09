@@ -1,7 +1,3 @@
--- Cinematic client runtime. Every staged entity is local-only and disposed by
--- cleanupScene; the real player remains hidden in the server-owned private
--- bucket until the final spawn handoff.
-
 SceneRuntime = SceneRuntime or {}
 
 local pendingAssets = {}
@@ -40,8 +36,6 @@ local function loadModel(model)
     return loaded or nil
 end
 
--- Pending loads keep their captured scene map until the bounded library call
--- completes; cancelling the shared-name loader could release a newer scene's use.
 local function loadSceneAsset(group, name, loader, hasLoaded, release)
     local assets = state[group]
     local asset = assets[name]
@@ -113,15 +107,6 @@ local function revealWorld(generation)
     if generation == state.sceneGeneration then DoScreenFadeIn(350) end
 end
 
--- The streamer loads the map around the LOCAL PLAYER PED, and only weakly
--- around a bare focus position. The ped is already frozen, invisible and
--- collision-free during cinematic mode (see hidePlayerPed), so parking it at the
--- preview point makes it the streamer's primary anchor. beginMode records where
--- it started and endMode restores it, so a disconnect mid-selection does not
--- persist a preview coordinate.
---
--- The load scene is only an accelerant, not a gate: on a cold client it
--- regularly never reports itself loaded.
 local STREAM_START_RETRY_MS = 250
 local STREAM_START_WINDOW_MS = 1000
 
@@ -137,12 +122,7 @@ local function anchorPlayerAt(coords)
     local ped = PlayerPedId()
     if not ped or ped == 0 then return end
 
-    -- NoOffset: the ped is frozen, and the offset form resolves against
-    -- physics that are not running for it.
     SetEntityCoordsNoOffset(ped, coords.x, coords.y, coords.z, false, false, false)
-    -- Re-asserted rather than assumed: a respawn during a long preview replaces
-    -- the ped handle, and a visible, colliding player standing in the shot is
-    -- exactly what the cinematic mode exists to prevent.
     FreezeEntityPosition(ped, true)
     SetEntityCollision(ped, false, false)
     SetEntityVisible(ped, false, false)
@@ -163,9 +143,6 @@ local function streamWorld(coords, generation)
     if IsNewLoadSceneActive() then NewLoadSceneStop() end
     anchorPlayerAt(coords)
 
-    -- Best effort, and deliberately short: if the engine will not take a load
-    -- scene we carry on regardless, because the ped anchor above is doing the
-    -- real work.
     local started = requestLoadScene(coords)
     local retryWindow = GetGameTimer() + STREAM_START_WINDOW_MS
     while not started and generation == state.sceneGeneration and GetGameTimer() < retryWindow do
@@ -178,13 +155,10 @@ local function streamWorld(coords, generation)
     local loaded = false
 
     while generation == state.sceneGeneration and GetGameTimer() < deadline do
-        -- Either signal is good enough. Collision around the ped is the one
-        -- that actually correlates with "there is a world at the camera".
         if HasCollisionLoadedAroundEntity(ped) or (started and IsNewLoadSceneLoaded()) then
             loaded = true
             break
         end
-        -- Collision requests are not sticky; re-issue while waiting.
         RequestCollisionAtCoord(coords.x, coords.y, coords.z)
         Wait(0)
     end
@@ -192,10 +166,6 @@ local function streamWorld(coords, generation)
     if generation ~= state.sceneGeneration then return false, false end
     if IsNewLoadSceneActive() then NewLoadSceneStop() end
 
-    -- A timeout still shows the destination. The ped is parked there and the
-    -- streamer is working; the last of the map pops in behind the camera, which
-    -- is strictly better than diverting a player to a fallback city spawn they
-    -- did not choose.
     return true, true, loaded
 end
 
@@ -370,8 +340,6 @@ end
 ---as long as there is genuinely nothing to look at.
 ---@param generation integer The scene generation this preview belongs to.
 local function announcePreviewLive(generation)
-    -- A superseded preview must stay silent: the player has already moved on,
-    -- and its camera is not the one on screen.
     if generation ~= state.sceneGeneration then return end
     SendNUIMessage({ action = 'multichar:spawn:previewLive', data = { generation = generation } })
 end
@@ -385,13 +353,7 @@ local function announcePreviewStage(generation, stage)
     SendNUIMessage({ action = 'multichar:spawn:previewStage', data = { stage = stage } })
 end
 
--- Keep authored composition, but never accept a camera position that has map
--- geometry between it and the subject. A small capsule trace is used instead
--- of a zero-width ray so the camera does not end up grazing a wall, column, or
--- foliage edge. If the authored angle is blocked we fan around the subject at
--- the same distance before falling back to a point just in front of the first
--- obstruction.
-local CAMERA_TRACE_FLAGS = 273 -- world geometry, objects, and vegetation
+local CAMERA_TRACE_FLAGS = 273
 local CAMERA_TRACE_RADIUS = 0.28
 local CAMERA_FAN_ANGLES = { 0.0, 28.0, -28.0, 55.0, -55.0, 82.0, -82.0, 180.0 }
 
@@ -453,9 +415,6 @@ local function resolveCameraPosition(position, subject, ignoreEntity, secondaryS
         end
     end
 
-    -- A trace can time out while collision is still settling. Preserve the
-    -- authored shot in that rare case rather than snapping to arbitrary world
-    -- coordinates; the surrounding stream operation remains bounded.
     return position
 end
 
@@ -585,8 +544,6 @@ end
 local function startTimeline(scene)
     local timeline = scene.timeline or {}
     local cues = timeline.cues or {}
-    -- 'focus' (the default, also when unset) keeps the camera on the previewed
-    -- ped: camera cues are dropped, every other cue still plays.
     if Config.cameraMode ~= 'cycle' then
         local kept = {}
         for _, cue in ipairs(cues) do
@@ -637,13 +594,8 @@ function SceneRuntime.beginMode()
     local ped = PlayerPedId()
     state.playerState = {
         visible = IsEntityVisible(ped),
-        invincible = GetPlayerInvincible(PlayerId()),
+        invincible = GetPlayerInvincible(Kora.cache.playerId()),
         frozen = IsEntityPositionFrozen(ped),
-        -- Where the ped stood before the previews started moving it around the
-        -- map to anchor the streamer (see anchorPlayerAt). Restored on endMode
-        -- so a player who disconnects mid-selection does not persist whichever
-        -- spawn they were last looking at as their saved position. A real spawn
-        -- overwrites this immediately, so it only matters on the abandon path.
         coords = GetEntityCoords(ped),
         heading = GetEntityHeading(ped),
     }
@@ -651,27 +603,30 @@ function SceneRuntime.beginMode()
     state.hiddenPed = ped
     DoScreenFadeOut(0)
 
+    -- Ped swaps are picked up from the shared kora_lib cache instead of polling
+    -- PlayerPedId() every frame; the screen is faded out so the cache interval is invisible.
+    Kora.cache.onChange('ped', function(newPed)
+        if state.modeActive and newPed ~= state.hiddenPed then
+            hidePlayerPed(newPed)
+            state.hiddenPed = newPed
+        end
+    end)
+
+    -- Only the natives that genuinely need re-asserting every frame stay in the loop.
+    local hideHud, disableControls = HideHudAndRadarThisFrame, DisableAllControlActions
+    local pedDensity, scenarioDensity = SetPedDensityMultiplierThisFrame, SetScenarioPedDensityMultiplierThisFrame
+    local vehDensity, randomVehDensity = SetVehicleDensityMultiplierThisFrame, SetRandomVehicleDensityMultiplierThisFrame
+    local parkedDensity = SetParkedVehicleDensityMultiplierThisFrame
+
     CreateThread(function()
         while state.modeActive do
-            -- The game's own first spawn can still be in flight when selection
-            -- opens on a cold client, and finishing it CREATES A NEW PED. The
-            -- new handle is visible, unfrozen and collidable, so the hide above
-            -- silently stops applying and a real player drops into the middle
-            -- of the shot -- on the first load only, which is exactly why this
-            -- came in as "it works on the second load, not the first".
-            -- Re-assert on every handle change: one comparison per frame.
-            local ped = PlayerPedId()
-            if ped ~= state.hiddenPed then
-                hidePlayerPed(ped)
-                state.hiddenPed = ped
-            end
-            HideHudAndRadarThisFrame()
-            DisableAllControlActions(0)
-            SetPedDensityMultiplierThisFrame(0.0)
-            SetScenarioPedDensityMultiplierThisFrame(0.0, 0.0)
-            SetVehicleDensityMultiplierThisFrame(0.0)
-            SetRandomVehicleDensityMultiplierThisFrame(0.0)
-            SetParkedVehicleDensityMultiplierThisFrame(0.0)
+            hideHud()
+            disableControls(0)
+            pedDensity(0.0)
+            scenarioDensity(0.0, 0.0)
+            vehDensity(0.0)
+            randomVehDensity(0.0)
+            parkedDensity(0.0)
             Wait(0)
         end
     end)
@@ -685,11 +640,6 @@ function SceneRuntime.loadCharacter(scene, model, skin)
     if not scene then return failLoad(generation, 'no matching scene') end
     state.scene = scene
     applyEnvironment(scene.environment)
-    -- Deliberately ignores the `accepted` result. A character scene sits on an
-    -- authored anchor that is known to exist, so there is nothing to fall back
-    -- to and no reason to refuse the preview: the focus is set, the streamer is
-    -- working, and the scene fills in behind the camera. Only a newer preview
-    -- superseding this one stops here.
     if not streamWorld(scene.anchor, generation) then return false, 'stale preview' end
 
     local groundedAnchor = snapToGround(scene.anchor)
@@ -755,17 +705,9 @@ local function destroyCameraKey(key)
     state.cameras[key] = nil
 end
 
--- previewSpawn's third return separates the two ways a preview can end with no
--- camera arriving. A CANCELLED preview is not a failure: some other preview --
--- or a mode teardown -- bumped state.sceneGeneration, which retires every
--- thread fenced on the old one. That is simply what picking a different
--- location looks like from in here, so the NUI must stay silent about it;
--- every other reason is a real failure worth telling the player about.
 SceneRuntime.PREVIEW_SUPERSEDED = 'superseded'
 local PREVIEW_SUPERSEDED = SceneRuntime.PREVIEW_SUPERSEDED
 
--- The interpolation runs in the engine; this only waits for it. Short sleeps
--- rather than one per frame still notice a cancelled flight within 50 ms.
 local CAMERA_WAIT_STEP_MS = 50
 
 local function waitCameraTransition(durationMs, generation)
@@ -780,9 +722,6 @@ end
 
 local function startWorldStream(coords)
     if IsNewLoadSceneActive() then NewLoadSceneStop() end
-    -- Same anchor as streamWorld: the ped is the streamer's primary reference,
-    -- and this variant exists only so the flight can start while the
-    -- destination loads underneath it.
     anchorPlayerAt(coords)
     return {
         started = requestLoadScene(coords),
@@ -792,8 +731,6 @@ local function startWorldStream(coords)
 end
 
 local function finishWorldStream(ticket, generation)
-    -- The aerial flight has been covering this since lift-off, so whatever is
-    -- left of the wait happens here while the camera is still cruising.
     local ped = PlayerPedId()
 
     while generation == state.sceneGeneration and GetGameTimer() < ticket.deadline do
@@ -805,11 +742,6 @@ local function finishWorldStream(ticket, generation)
     if generation ~= state.sceneGeneration then return false end
     if IsNewLoadSceneActive() then NewLoadSceneStop() end
 
-    -- Always true. The ped has been parked at the destination since lift-off,
-    -- so there is a world there whether or not the engine ever said so, and
-    -- diverting the player to a fallback city spawn they did not choose is a
-    -- worse outcome than a few late-popping props. Kept as a return value
-    -- because the caller's shape is part of the preview contract.
     return true
 end
 
@@ -861,8 +793,6 @@ end
 ---@return integer ms
 function SceneRuntime.spawnPreviewBudgetMs()
     local flight = Config.spawnFlight or {}
-    -- One world stream, not two: the destination is no longer abandoned for a
-    -- fallback the player did not choose, so nothing is ever streamed twice.
     local worldStream = STREAM_START_WINDOW_MS + Config.sceneLimits.worldStreamTimeoutMs
     return FADE_OUT_WAIT_MS * 2
         + (tonumber(flight.liftDurationMs) or 900)
@@ -879,9 +809,6 @@ function SceneRuntime.previewSpawn(location)
         return false, false, 'that location has no coordinates'
     end
 
-    -- The first spawn shot replaces the character scene and stays fully
-    -- covered while both the world and camera are being prepared. Once a
-    -- spawn camera exists, navigation becomes an uninterrupted aerial flight.
     local currentCam = state.cameras.spawn
     if not currentCam or not DoesCamExist(currentCam) or not state.spawnLookAt then
         if not fadeWorldOut(generation) then return false, false, PREVIEW_SUPERSEDED end
@@ -895,9 +822,6 @@ function SceneRuntime.previewSpawn(location)
     local targetCamera = preview.camera or vector3(coords.x + 8.0, coords.y - 8.0, coords.z + 6.0)
     local settings = Config.spawnFlight or {}
     local oldLookAt = state.spawnLookAt
-    -- A new location can be selected while lift/travel interpolation is still
-    -- running. Capture the rendered camera, not the last completed preview,
-    -- so the replacement route begins exactly where the player is looking.
     local oldPosition = GetFinalRenderedCamCoord()
     if not oldPosition or (oldPosition.x == 0.0 and oldPosition.y == 0.0 and oldPosition.z == 0.0) then
         oldPosition = state.spawnPosition or GetCamCoord(currentCam)
@@ -913,8 +837,6 @@ function SceneRuntime.previewSpawn(location)
     local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
     local altitude = math.min(tonumber(settings.maxAltitude) or 420.0,
         math.max(tonumber(settings.minAltitude) or 180.0, distance * 0.10))
-    -- Absolute: spawn point z + offset. oldPosition.z is the camera as rendered
-    -- mid-flight, so adding to it compounded on every rapid switch.
     local liftPosition = vector3(
         oldPosition.x,
         oldPosition.y,
@@ -979,31 +901,387 @@ function SceneRuntime.previewSpawn(location)
     return true, streamed
 end
 
+local CONTROL_JUMP = 22 -- Space: cuts the arrival flight short
+local LANDING_WAIT_MS = 1500 -- longest the arrival waits for the ped to reach the ground
+
+---Where the camera that is rendering right now is, and a point it is looking
+---at, so a flight can start from exactly the shot the player is looking at.
+---Falls back to the active scene camera when the render camera reports
+---nothing (e.g. before the first frame).
+---@return table|nil position, table|nil lookAt, number|nil fov
+local function currentShot()
+    local position = GetFinalRenderedCamCoord()
+    if (not position or (position.x == 0.0 and position.y == 0.0 and position.z == 0.0))
+        and state.activeCam and DoesCamExist(state.activeCam) then
+        position = GetCamCoord(state.activeCam)
+    end
+    if not position or (position.x == 0.0 and position.y == 0.0 and position.z == 0.0) then return nil end
+
+    local rotation = GetFinalRenderedCamRot(2)
+    if not rotation then return nil end
+    local pitch, yaw = math.rad(rotation.x), math.rad(rotation.z)
+    local reach = 30.0
+    local lookAt = vector3(
+        position.x + -math.sin(yaw) * math.cos(pitch) * reach,
+        position.y + math.cos(yaw) * math.cos(pitch) * reach,
+        position.z + math.sin(pitch) * reach
+    )
+    local fov = GetFinalRenderedCamFov()
+    return position, lookAt, (fov and fov > 0.0) and fov or 45.0
+end
+
+---The default arrival framing for a location with no authored preview shot:
+---behind and above the ped, looking at them, so the hand-off to the gameplay
+---camera (which also sits behind the ped) is a short move.
+---@param coords table vector4 with heading in .w
+---@return table camera, table lookAt
+local function defaultArrivalShot(coords)
+    local heading = math.rad(coords.w or coords.h or 0.0)
+    local behind = 7.0
+    return vector3(
+        coords.x + math.sin(heading) * behind,
+        coords.y - math.cos(heading) * behind,
+        coords.z + 2.6
+    ), vector3(coords.x, coords.y, coords.z + 0.6)
+end
+
+---Flies the camera from the character scene to an arrival point, in real
+---script cameras: lift out of the scene, cruise across, descend into the
+---arrival shot. The destination streams in while the camera moves, so the wait
+---that used to block every location pick is hidden inside this flight.
+---
+---Leaves the player's (hidden, frozen) ped parked at the destination and the
+---final shot rendering. SceneRuntime.completeArrival takes it from there. On a
+---false return nothing is committed and the caller should fall back to a plain
+---fade-out/teleport/fade-in.
+---@param location table { coords = vector4, preview = { camera, lookAt, fov, environment }|nil }
+---@param opts table|nil { skippable = boolean, onStage = fun(stage: string) }
+---@return boolean ok
+---@return string|nil reason
+function SceneRuntime.flyToArrival(location, opts)
+    opts = opts or {}
+    state.sceneGeneration = state.sceneGeneration + 1
+    local generation = state.sceneGeneration
+    if not location or not location.coords then return false, 'that location has no coordinates' end
+
+    local function stage(name)
+        if opts.onStage and generation == state.sceneGeneration then pcall(opts.onStage, name) end
+    end
+
+    local startPosition, startLookAt, startFov = currentShot()
+    if not startPosition then return false, 'there is no camera to start the flight from' end
+
+    local coords = location.coords
+    local preview = location.preview or {}
+    local settings = Config.spawnFlight or {}
+    local defaultCamera, defaultLookAt = defaultArrivalShot(coords)
+    local targetLookAt = preview.lookAt or defaultLookAt
+    local targetCamera = preview.camera or defaultCamera
+
+    -- Space shortens the camera travel; everything that has to happen (the
+    -- destination streaming, the ped being placed) still does.
+    local skipped = false
+    local function duration(ms) return skipped and 0 or ms end
+    local function wait(durationMs, ignoreSkip)
+        local deadline = GetGameTimer() + math.max(0, tonumber(durationMs) or 0)
+        while generation == state.sceneGeneration and (ignoreSkip or not skipped) do
+            if not ignoreSkip and opts.skippable and IsDisabledControlJustPressed(0, CONTROL_JUMP) then
+                skipped = true
+                break
+            end
+            if GetGameTimer() >= deadline then break end
+            Wait(0)
+        end
+        return generation == state.sceneGeneration
+    end
+
+    local handoff = createPointCamera(startPosition, startLookAt, startFov)
+    if not handoff then return false, 'the flight camera could not be created' end
+    destroyCameraKey('arrivalHandoff')
+    state.cameras.arrivalHandoff, state.activeCam = handoff, handoff
+    SetCamActive(handoff, true)
+
+    local dx, dy, dz = targetLookAt.x - startLookAt.x, targetLookAt.y - startLookAt.y, targetLookAt.z - startLookAt.z
+    local distance = math.sqrt(dx * dx + dy * dy + dz * dz)
+    local altitude = math.min(tonumber(settings.maxAltitude) or 420.0,
+        math.max(tonumber(settings.minAltitude) or 180.0, distance * 0.10))
+    local liftPosition = vector3(
+        startPosition.x, startPosition.y,
+        startPosition.z + math.max(tonumber(settings.liftHeight) or 130.0, altitude)
+    )
+    local approachX, approachY = targetCamera.x - targetLookAt.x, targetCamera.y - targetLookAt.y
+    local approachLength = math.sqrt(approachX * approachX + approachY * approachY)
+    if approachLength < 0.01 then approachX, approachY, approachLength = 1.0, -1.0, math.sqrt(2.0) end
+    local approachDistance = math.min(120.0, math.max(35.0, distance * 0.035))
+    local travelPosition = vector3(
+        targetLookAt.x + approachX / approachLength * approachDistance,
+        targetLookAt.y + approachY / approachLength * approachDistance,
+        targetLookAt.z + altitude
+    )
+    local travelDuration = math.floor(distance / math.max(1.0, tonumber(settings.unitsPerSecond) or 650.0) * 1000.0)
+    travelDuration = math.min(tonumber(settings.maxTravelDurationMs) or 4200,
+        math.max(tonumber(settings.minTravelDurationMs) or 1400, travelDuration))
+    local liftDuration = tonumber(settings.liftDurationMs) or 900
+    local descentDuration = tonumber(settings.descentDurationMs) or 1450
+
+    -- Lift: rise out of the scene while the scene is still what is streamed.
+    stage('lift')
+    local liftCam = createPointCamera(liftPosition, startLookAt, math.max(50.0, startFov))
+    if not liftCam then return false, 'the flight camera could not be created' end
+    destroyCameraKey('arrivalLift')
+    state.cameras.arrivalLift, state.activeCam = liftCam, liftCam
+    SetCamActiveWithInterp(liftCam, handoff, liftDuration, true, true)
+    if not wait(liftDuration) then return false, PREVIEW_SUPERSEDED end
+
+    -- Cruise: now the camera is high, move the streaming focus to the
+    -- destination and travel there while it loads.
+    stage('cruise')
+    local ticket = startWorldStream(coords)
+    local travelCam = createPointCamera(travelPosition, targetLookAt, 58.0)
+    if not travelCam then return false, 'the flight camera could not be created' end
+    destroyCameraKey('arrivalTravel')
+    state.cameras.arrivalTravel, state.activeCam = travelCam, travelCam
+    SetCamActiveWithInterp(travelCam, liftCam, duration(travelDuration), true, true)
+    if not wait(travelDuration) then return false, PREVIEW_SUPERSEDED end
+
+    finishWorldStream(ticket, generation)
+    if generation ~= state.sceneGeneration then return false, PREVIEW_SUPERSEDED end
+
+    -- Descent: the scene's weather and clock stop applying, so the player sees
+    -- the real world they are about to stand in, then settle into the shot.
+    stage('descent')
+    ClearOverrideWeather()
+    ClearWeatherTypePersist()
+    NetworkClearClockTimeOverride()
+    ClearTimecycleModifier()
+    applyEnvironment(preview.environment)
+    targetCamera = resolveCameraPosition(targetCamera, targetLookAt, PlayerPedId())
+    if generation ~= state.sceneGeneration then return false, PREVIEW_SUPERSEDED end
+    local finalCam = createPointCamera(targetCamera, targetLookAt, preview.fov or 45.0)
+    if not finalCam then return false, 'the flight camera could not be created' end
+    destroyCameraKey('arrival')
+    state.cameras.arrival, state.activeCam = finalCam, finalCam
+    local descent = skipped and 450 or descentDuration
+    SetCamActiveWithInterp(finalCam, travelCam, descent, true, true)
+    if not wait(descent, true) then return false, PREVIEW_SUPERSEDED end
+    return true
+end
+
+-- The asset the arrival effect needs, requested while the camera is still
+-- flying so it is resident when the ped arrives. Requesting it only at the
+-- moment of arrival meant waiting on the streamer, and a late or missed load
+-- showed as no effect at all.
+local arrivalEffectAsset = nil
+
+---Starts loading the arrival effect's asset without blocking. Call it before
+---the flight; completeArrival then finds it ready.
+---@param config table|nil Config.arrival.ptfx
+function SceneRuntime.preloadArrivalEffect(config)
+    if type(config) ~= 'table' or config.enabled == false or type(config.asset) ~= 'string' then return end
+    if arrivalEffectAsset == config.asset then return end
+    local asset = config.asset
+    arrivalEffectAsset = asset
+    CreateThread(function()
+        local called, loaded = pcall(Kora.stream.loadPtfx, asset, nil, { timeout = 5000 })
+        if (not called or loaded == false) and arrivalEffectAsset == asset then arrivalEffectAsset = nil end
+    end)
+end
+
+---Gives the preloaded asset back, for when the arrival never got to use it.
+function SceneRuntime.releaseArrivalEffect()
+    if arrivalEffectAsset then RemoveNamedPtfxAsset(arrivalEffectAsset) end
+    arrivalEffectAsset = nil
+end
+
+-- Effects in flight, per asset, so an asset is only handed back once the last
+-- effect that used it has had time to finish (two arrivals can overlap).
+local effectUsers = {}
+
+---Starts one non-looped effect and schedules the asset's release. The asset
+---must already be loaded.
+local function startEffect(asset, effect, scale, x, y, z, releaseAfterMs)
+    UseParticleFxAssetNextCall(asset)
+    StartParticleFxNonLoopedAtCoord(effect, x, y, z, 0.0, 0.0, 0.0, scale, false, false, false)
+    effectUsers[asset] = (effectUsers[asset] or 0) + 1
+    SetTimeout(releaseAfterMs, function()
+        effectUsers[asset] = math.max(0, (effectUsers[asset] or 1) - 1)
+        if effectUsers[asset] == 0 then
+            RemoveNamedPtfxAsset(asset)
+            if arrivalEffectAsset == asset then arrivalEffectAsset = nil end
+        end
+    end)
+end
+
+local function ensureEffectAsset(asset, timeoutMs)
+    if HasNamedPtfxAssetLoaded(asset) then return true end
+    local called, loaded = pcall(Kora.stream.loadPtfx, asset, nil, { timeout = timeoutMs })
+    return called and loaded ~= false
+end
+
+---Plays the arrival particle effect at a point (the ped's feet). Failing to
+---load the effect never blocks the arrival.
+---
+---The arriving player sees it locally and, with `config.synced`, asks the
+---server to show it to players nearby (qbmultichar:server:arrivalEffect). The
+---request carries only the position: the server decides what is played.
+---@param config table Config.arrival.ptfx
+---@param coords table
+local function playArrivalEffect(config, coords)
+    if type(config) ~= 'table' or config.enabled == false then return end
+    if type(config.asset) ~= 'string' or type(config.effect) ~= 'string' then return end
+    if not ensureEffectAsset(config.asset, 1500) then return end
+    local x, y, z = coords.x, coords.y, coords.z + (tonumber(config.zOffset) or 0.0)
+    startEffect(config.asset, config.effect, tonumber(config.scale) or 1.0, x, y, z,
+        tonumber(config.releaseAfterMs) or 4000)
+    if config.synced ~= false then TriggerServerEvent('qbmultichar:server:arrivalEffect', x, y, z) end
+end
+
+---Plays another player's arrival effect on this client. Everything is checked
+---here as well as on the server: this is a network event, so it is input.
+---@param asset any
+---@param effect any
+---@param scale any
+---@param x any
+---@param y any
+---@param z any
+---@return boolean played
+function SceneRuntime.playSyncedArrivalEffect(asset, effect, scale, x, y, z)
+    if type(asset) ~= 'string' or type(effect) ~= 'string' then return false end
+    if #asset == 0 or #asset > 64 or #effect == 0 or #effect > 64 then return false end
+    local position = { x, y, z }
+    for slot = 1, 3 do
+        local value = position[slot]
+        if type(value) ~= 'number' or value ~= value or value == math.huge or value == -math.huge then return false end
+    end
+    scale = type(scale) == 'number' and scale == scale and math.min(10.0, math.max(0.1, scale)) or 1.0
+    if not ensureEffectAsset(asset, 1500) then return false end
+    startEffect(asset, effect, scale, x, y, z, 4000)
+    return true
+end
+
+---The ground height under an arrival point, or nil when none is found close
+---enough to trust. Probed from just above the point so a floor above the
+---point is not mistaken for it.
+---@param coords table
+---@return number|nil
+local function groundUnder(coords)
+    RequestCollisionAtCoord(coords.x, coords.y, coords.z)
+    for _, lift in ipairs({ 1.0, 3.0 }) do
+        local found, groundZ = GetGroundZFor_3dCoord(coords.x, coords.y, coords.z + lift, false)
+        if found and math.abs(groundZ - coords.z) <= 4.0 then return groundZ end
+    end
+    return nil
+end
+
+---The arrival itself, run after flyToArrival has settled on the final shot.
+---Puts the ped on the arrival point (invisible), lets the caller run login
+---side effects while they are hidden, then plays the effect, fades the ped in
+---and blends the camera back to the gameplay camera. HUD and controls stay off
+---until the end, exactly as during character select.
+---@param coords table vector4 arrival point
+---@param opts table|nil { onPlaced = fun(), settleMs, pedFadeMs, handbackMs, ptfx }
+function SceneRuntime.completeArrival(coords, opts)
+    opts = opts or {}
+    local settle = math.max(0, tonumber(opts.settleMs) or 0)
+    local pedFade = math.max(0, tonumber(opts.pedFadeMs) or 0)
+    local handback = math.max(0, tonumber(opts.handbackMs) or 0)
+    local heading = coords.w or coords.h or 0.0
+
+    -- The hidden-ped watcher would re-hide a swapped ped behind our back.
+    state.hiddenPed = nil
+    Kora.cache.offChange('ped')
+
+    -- A ped's root sits about a metre above the ground it stands on. Where the
+    -- ground can be found the ped is placed at that standing height, so it has
+    -- nothing to fall and the effect can start at once; otherwise it is placed
+    -- at the coordinate and drops while invisible. It is never frozen mid-air.
+    local ground = groundUnder(coords)
+    local placeZ = (ground and ground + 1.0 or coords.z) + (tonumber(opts.zOffset) or 0.0)
+    local ped = PlayerPedId()
+    SetEntityCoords(ped, coords.x, coords.y, placeZ, false, false, false, true)
+    SetEntityHeading(ped, heading)
+    NetworkResurrectLocalPlayer(coords.x, coords.y, placeZ, heading, 0, false)
+    ped = PlayerPedId()
+    SetEntityCoords(ped, coords.x, coords.y, placeZ, false, false, false, true)
+    SetEntityHeading(ped, heading)
+    SetEntityAlpha(ped, 0, false)
+    SetEntityVisible(ped, false, false)
+    SetEntityCollision(ped, true, true)
+    FreezeEntityPosition(ped, false)
+    if opts.onPlaced then pcall(opts.onPlaced) end
+    if settle > 0 then Wait(settle) end
+
+    -- Whatever the login changed (saved outfit, starter outfit) is on by now.
+    -- Applying an outfit can replace the player's ped entirely, so the ped is
+    -- looked up again here and on every frame below rather than trusting the
+    -- handle from before the login.
+    ped = PlayerPedId()
+    local landing = GetGameTimer() + LANDING_WAIT_MS
+    while IsEntityInAir(ped) and GetGameTimer() < landing do
+        Wait(0)
+        ped = PlayerPedId()
+    end
+    local feet = GetEntityCoords(ped)
+    local feetZ = ground or (feet.z - 1.0)
+    SetEntityVisible(ped, true, false)
+    SetEntityAlpha(ped, 0, false)
+    SetGameplayCamRelativeHeading(0.0)
+    SetGameplayCamRelativePitch(0.0, 1.0)
+    RenderScriptCams(false, true, handback, true, true)
+    playArrivalEffect(opts.ptfx, { x = feet.x, y = feet.y, z = feetZ })
+
+    local started = GetGameTimer()
+    local total = math.max(handback, pedFade)
+    while GetGameTimer() - started < total do
+        local elapsed = GetGameTimer() - started
+        local current = PlayerPedId()
+        if current ~= ped then
+            ped = current
+            SetEntityVisible(ped, true, false)
+        end
+        if pedFade > 0 then
+            SetEntityAlpha(ped, math.min(255, math.floor(255 * elapsed / pedFade)), false)
+        else
+            ResetEntityAlpha(ped)
+        end
+        Wait(0)
+    end
+    ResetEntityAlpha(PlayerPedId())
+
+    SceneRuntime.endMode({ keepPlacement = true })
+end
+
 function SceneRuntime.cleanupScene()
     state.sceneGeneration = state.sceneGeneration + 1
     cleanupScene()
 end
 
-function SceneRuntime.endMode()
+---@param options table|nil { keepPlacement = boolean } keepPlacement leaves the
+---ped where the arrival put it instead of returning it to where it stood
+---before character select.
+function SceneRuntime.endMode(options)
     state.sceneGeneration = state.sceneGeneration + 1
     cleanupScene()
     state.modeActive = false
     state.hiddenPed = nil
+    Kora.cache.offChange('ped')
     local ped, previous = PlayerPedId(), state.playerState or {}
 
-    -- The focus follows the ped while previewing; hand it back to the engine
-    -- before the ped moves, or the streamer keeps chasing a stale anchor.
     ClearFocus()
 
-    if previous.coords then
+    if previous.coords and not (options and options.keepPlacement) then
         SetEntityCoordsNoOffset(ped, previous.coords.x, previous.coords.y, previous.coords.z, false, false, false)
         SetEntityHeading(ped, previous.heading or 0.0)
     end
 
-    SetEntityVisible(ped, previous.visible ~= false, false)
+    -- An arrival is a spawn: the ped is shown and free to move whatever state
+    -- it was in when character select began (it connects hidden and frozen).
+    -- Anything else returns the ped to the state it had before select.
+    local arrived = options and options.keepPlacement
+    SetEntityVisible(ped, arrived or previous.visible ~= false, false)
     SetEntityCollision(ped, true, true)
     SetEntityInvincible(ped, previous.invincible == true)
-    FreezeEntityPosition(ped, previous.frozen == true)
+    FreezeEntityPosition(ped, not arrived and previous.frozen == true)
     DoScreenFadeIn(350)
     state.playerState = nil
 end
@@ -1019,7 +1297,6 @@ end
 AddEventHandler('onClientResourceStop', function(resource)
     if resource ~= GetCurrentResourceName() then return end
     SceneRuntime.endMode()
-    -- A stopped caller cannot finish its suspended load and dispose the request.
     for asset in pairs(pendingAssets) do
         if asset.requested and not asset.released then
             asset.release(asset.name)

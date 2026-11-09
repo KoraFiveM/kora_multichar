@@ -1,18 +1,21 @@
 import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
-import { ChevronLeft, ChevronRight, LoaderCircle, LogOut, X } from "lucide-react";
+import { Building2, ChevronLeft, ChevronRight, Clock, House, LoaderCircle, LogOut, MapPin, Plus, X } from "lucide-react";
 import { CreatorScreen } from "./Creator";
 import { fetchNui } from "./nui";
 import {
-  characterName, isValidBirthdate, money, normalizeCharacters, parseLibrary, slotTarget, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
+  characterName, defaultArrivalId, isValidBirthdate, money, normalizeCharacters, parseArrivalList, parseLibrary, slotTarget, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
 } from "./lib";
 import type { ModelLibrary } from "./lib";
 import type { Character, NuiMessage, SceneDraft, SpawnLocation } from "./types";
 
-type Stage = "hidden" | "characters" | "spawn" | "creator";
+type Stage = "hidden" | "characters" | "spawn" | "flight" | "creator";
+type FlightState = { location: string; character: string | null; skippable: boolean; stage: string };
 type CreatorPayload = { draft?: SceneDraft; scenes?: Record<string, SceneDraft>; cursor?: boolean; error?: string; library?: unknown; placing?: boolean; selected?: string };
 type UiSettings = {
   brandName: string; showNewSlotBadge: boolean; nationalities: string[]; defaultNationality: string; allowFreeTextNationality: boolean;
   profile: ProfileText;
+  /** One screen for character and arrival point, then a fly-in; false keeps the separate spawn picker. */
+  combinedSelect: boolean;
 };
 type ProfileCard = "career" | "affiliation" | "finances" | "birthDate" | "nationality" | "citizenId";
 type ProfileText = Record<ProfileCard, { label: string; description: string }>;
@@ -24,7 +27,7 @@ const DEFAULT_PROFILE: ProfileText = {
   nationality: { label: "Nationality", description: "Place of origin" },
   citizenId: { label: "Citizen ID", description: "" },
 };
-const DEFAULT_UI: UiSettings = { brandName: "Kora", showNewSlotBadge: false, nationalities: [], defaultNationality: "", allowFreeTextNationality: false, profile: DEFAULT_PROFILE };
+const DEFAULT_UI: UiSettings = { brandName: "Kora", showNewSlotBadge: false, nationalities: [], defaultNationality: "", allowFreeTextNationality: false, profile: DEFAULT_PROFILE, combinedSelect: false };
 
 function parseProfile(raw: unknown): ProfileText {
   const source = (raw && typeof raw === "object" ? raw : {}) as Record<string, { label?: unknown; description?: unknown } | undefined>;
@@ -53,6 +56,7 @@ function parseUi(raw: unknown): UiSettings {
     defaultNationality: typeof ui.defaultNationality === "string" ? ui.defaultNationality.trim() : "",
     allowFreeTextNationality: ui.allowFreeTextNationality === true,
     profile: parseProfile(ui.profile),
+    combinedSelect: ui.combinedSelect === true,
   };
 }
 
@@ -91,38 +95,21 @@ export function App() {
   const [confirmDisconnect, setConfirmDisconnect] = useState(true);
   const [busy, setBusy] = useState(false);
   const [previewing, setPreviewing] = useState(false);
-  // From the show payload; 0 disables the watchdog.
   const [previewWatchdogMs, setPreviewWatchdogMs] = useState(0);
   const [closeCreateOnBackdrop, setCloseCreateOnBackdrop] = useState(false);
   const [confirmDiscard, setConfirmDiscard] = useState(true);
   const [uiSettings, setUiSettings] = useState<UiSettings>(DEFAULT_UI);
-  // Kept here, not in the dialog, so closing and reopening restores typed values.
   const [createDraft, setCreateDraft] = useState<CreateDraft>(() => emptyCreateDraft(DEFAULT_UI));
-  // What the spawn preview is currently waiting on, for the cover's subtitle.
   const [previewStage, setPreviewStage] = useState<string | null>(null);
   const [spawnTraveling, setSpawnTraveling] = useState(false);
   const spawnCameraReady = useRef(false);
-  // Bumped every time Lua reports a preview camera live. The focus effect
-  // captures its value on entry so it can tell "my preview never came up" from
-  // "my preview came up ages ago and the callback is still pending" -- only the
-  // first of those is worth a timeout toast.
   const spawnPreviewLiveSeq = useRef(0);
-  // A ref, not state: the budget arrives with the spawn payload before the
-  // first preview starts, and making it a dependency of the preview effect
-  // would restart an in-flight preview every time Lua re-sent it.
   const spawnPreviewBudget = useRef<number | null>(null);
-  // Config.spawnSelect: minimum gap between location switches, enforced for
-  // buttons, arrow keys and A/D alike in move(). A ref for the same reason.
   const spawnSwitchCooldown = useRef(800);
   const lastSpawnSwitch = useRef(0);
-  // Config.spawnSelect.settleMs: browsing only changes the label; the camera
-  // flight starts once the player has stayed on a location this long.
   const spawnSettle = useRef(1000);
   const spawnSettleTimer = useRef(0);
-  // Config.spawnSelect.lockWhileMoving: no switching until the camera arrives.
   const [spawnLock, setSpawnLock] = useState(true);
-  // The location the camera is showing or flying to, so browsing back to it
-  // does not start a flight to where the camera already is.
   const spawnCameraTarget = useRef<string | null>(null);
   const [spawnHints, setSpawnHints] = useState<SpawnHints>(DEFAULT_SPAWN_HINTS);
   const [sceneName, setSceneName] = useState("");
@@ -136,6 +123,11 @@ export function App() {
   const [creatorLibrary, setCreatorLibrary] = useState<ModelLibrary>({});
   const [creatorPlacing, setCreatorPlacing] = useState(false);
   const [creatorFocus, setCreatorFocus] = useState<string | null>(null);
+  const [arrivals, setArrivals] = useState<SpawnLocation[]>([]);
+  const [arrivalId, setArrivalId] = useState<string | null>(null);
+  const [arrivalsLoading, setArrivalsLoading] = useState(false);
+  const [flight, setFlight] = useState<FlightState | null>(null);
+  const arrivalSeq = useRef(0);
 
   const canCreate = characters.length < maxCharacters;
   const slideCount = characters.length + (canCreate ? 1 : 0);
@@ -158,8 +150,17 @@ export function App() {
         setCharacters(normalizeCharacters(payload?.characters));
         setMaxCharacters(Number(payload?.maxCharacters) || 5);
         spawnCameraReady.current = false;
+        setArrivals([]); setArrivalId(null); setArrivalsLoading(false); setFlight(null);
         setIndex(0); setStage("characters"); setBusy(false); setDetails(false); setCreating(false); setDeleting(false); setPreviewing(true); setSpawnTraveling(false);
-      } else if (action === "multichar:close") setStage("hidden");
+      } else if (action === "multichar:flight:start") {
+        const payload = (data ?? {}) as { location?: string; character?: string | null; skippable?: boolean };
+        setFlight({ location: payload.location || "your arrival point", character: payload.character || null, skippable: payload.skippable !== false, stage: "lift" });
+        setCreating(false); setDeleting(false); setDisconnecting(false); setDetails(false); setPreviewing(false); setBusy(true);
+        setStage("flight");
+      } else if (action === "multichar:flight:stage") {
+        const next = (data as { stage?: string })?.stage;
+        if (next) setFlight((current) => (current ? { ...current, stage: next } : current));
+      } else if (action === "multichar:close") { setStage("hidden"); setFlight(null); }
       else if (action === "multichar:error") { setToast(String(data || "Something went wrong.")); setBusy(false); }
       else if (action === "multichar:previewLoading") setPreviewing(true);
       else if (action === "multichar:previewReady") {
@@ -167,18 +168,12 @@ export function App() {
         setPreviewing(false); setSceneName(payload.scene || "");
         if (payload.ok === false && payload.error) setToast(payload.error);
       } else if (action === "multichar:spawn:previewLive") {
-        // Camera is live: drop the cover now rather than waiting for the focus
-        // callback, which only answers once the whole preview has settled
-        // (over a minute worst case). The callback still decides whether a
-        // failure is worth a toast.
         spawnCameraReady.current = true;
         spawnPreviewLiveSeq.current += 1;
         setPreviewing(false);
         setSpawnTraveling(false);
         setPreviewStage(null);
       } else if (action === "multichar:spawn:previewStage") {
-        // Cosmetic: names what the preview is waiting on so a long world
-        // stream reads as busy rather than frozen.
         setPreviewStage((data as { stage?: string })?.stage ?? null);
       } else if (action === "multichar:spawn:locations") {
         const payload = data as SpawnPayload;
@@ -231,7 +226,28 @@ export function App() {
     return () => window.clearTimeout(timer);
   }, [stage, index, character?.citizenid, creating, deleting, slideCount]);
 
-  // Safety net: a preview that never reports back must not hold the cover forever.
+  // One-screen select: load the arrival points this character can start at.
+  // The list depends on the character (their last location, owned property),
+  // so it is fetched on the same debounce as the scene preview and answers
+  // from an older selection are dropped.
+  useEffect(() => {
+    if (stage !== "characters" || !uiSettings.combinedSelect) return;
+    const seq = ++arrivalSeq.current;
+    if (!character) { setArrivals([]); setArrivalId(null); setArrivalsLoading(false); return; }
+    setArrivalsLoading(true);
+    const timer = window.setTimeout(() => {
+      fetchNui<unknown>("multichar:spawn:list", { citizenid: character.citizenid }).then((reply) => {
+        if (seq !== arrivalSeq.current) return;
+        const list = parseArrivalList(reply);
+        setArrivals(list);
+        setArrivalId((current) => defaultArrivalId(list, current));
+        setArrivalsLoading(false);
+        if (!list.length) setToast("No arrival points are available for this character.");
+      });
+    }, 120);
+    return () => window.clearTimeout(timer);
+  }, [stage, character?.citizenid, uiSettings.combinedSelect]);
+
   useEffect(() => {
     if (!previewing || stage !== "characters" || !previewWatchdogMs) return;
     const timer = window.setTimeout(() => {
@@ -245,7 +261,6 @@ export function App() {
     if (stage !== "spawn" || !spawn) return;
     let active = true;
     const initial = !spawnCameraReady.current;
-    // Browsing back to the place the camera already shows needs no flight.
     if (!initial && spawnCameraTarget.current === spawn.id) return;
     let timeoutId = 0;
     const start = () => {
@@ -254,8 +269,6 @@ export function App() {
       const liveSeqAtStart = spawnPreviewLiveSeq.current;
       if (initial) setPreviewing(true);
       else setSpawnTraveling(true);
-      // A new preview has nothing to report yet; a stale stage line from the
-      // previous one would name the wrong location.
       setPreviewStage(null);
       const timeout = new Promise<null>((resolve) => {
         timeoutId = window.setTimeout(() => resolve(null), spawnPreviewTimeout(spawnPreviewBudget.current));
@@ -263,19 +276,12 @@ export function App() {
       Promise.race([fetchNui<{ ok?: boolean; reason?: string }>("multichar:spawn:focus", { id: spawn.id }), timeout]).then((result) => {
         if (!active) return;
         if (result === null) {
-          // Silent if the camera for THIS preview already went live: the player
-          // has been looking at the place for the whole budget, and telling them
-          // it timed out would describe something they can see is not true. Only
-          // a preview that never came up is worth the toast.
           if (spawnPreviewLiveSeq.current === liveSeqAtStart) {
             setToast("Arrival preview timed out. You can still spawn here.");
           }
           return;
         }
         if (result?.ok === false) {
-          // A superseded preview is the player picking somewhere else, or the
-          // scene being torn down under it -- expected, and silent. Only a
-          // camera or streaming failure is worth interrupting them for.
           if (result.reason !== SPAWN_PREVIEW_SUPERSEDED) {
             setToast("That arrival could not be previewed. You can still spawn here.");
           }
@@ -287,15 +293,10 @@ export function App() {
       }).finally(() => {
         window.clearTimeout(timeoutId);
         if (!active) return;
-        // The preview is visual only. Whether it fails or its callback is
-        // interrupted, always release the selector so a player cannot remain
-        // indefinitely on “Scouting your arrival”.
         if (initial) setPreviewing(false);
         setSpawnTraveling(false);
       });
     };
-    // The first shot comes up at once; after that the camera waits for the
-    // player to settle, and every further switch restarts the wait (cleanup).
     if (spawnCameraTarget.current === null || spawnSettle.current <= 0) start();
     else spawnSettleTimer.current = window.setTimeout(start, spawnSettle.current);
     const settleTimer = spawnSettleTimer.current;
@@ -304,8 +305,6 @@ export function App() {
 
   const move = (delta: number) => {
     if (stage === "characters" && !creating && !deleting && slideCount) {
-      // With a single slide there is nothing to preview; starting one would
-      // never be answered because the preview effect only runs on index change.
       const next = wrapIndex(index, delta, slideCount);
       if (next === index) return;
       setPreviewing(true); setIndex(next); setDetails(false);
@@ -317,13 +316,25 @@ export function App() {
     }
   };
 
+  const moveArrival = (delta: number) => {
+    if (stage !== "characters" || creating || deleting || busy || !arrivals.length) return;
+    const at = Math.max(0, arrivals.findIndex((entry) => entry.id === arrivalId));
+    setArrivalId(arrivals[wrapIndex(at, delta, arrivals.length)].id);
+  };
+
   const accept = () => {
     if (busy || previewing || spawnTraveling) return;
     if (stage === "characters" && !creating && !deleting) {
       if (!character) setCreating(true);
+      else if (uiSettings.combinedSelect) {
+        if (!arrivalId || arrivalsLoading) return;
+        setBusy(true);
+        fetchNui<{ ok?: boolean }>("multichar:play", { citizenid: character.citizenid, locationId: arrivalId }).then((reply) => {
+          if (!reply?.ok) setBusy(false);
+        });
+      }
       else { setBusy(true); fetchNui("multichar:select", { citizenid: character.citizenid }); }
     } else if (stage === "spawn" && spawn) {
-      // Spawning during the settle wait must not start a flight afterwards.
       window.clearTimeout(spawnSettleTimer.current);
       spawnSettleTimer.current = 0;
       setBusy(true); fetchNui("multichar:spawn:choose", { id: spawn.id });
@@ -332,9 +343,11 @@ export function App() {
 
   useEffect(() => {
     const keyboard = (event: KeyboardEvent) => {
-      if (stage === "hidden" || stage === "creator" || creating || deleting || ["INPUT", "TEXTAREA", "SELECT"].includes((event.target as HTMLElement)?.tagName)) return;
+      if (stage === "hidden" || stage === "creator" || stage === "flight" || creating || deleting || ["INPUT", "TEXTAREA", "SELECT"].includes((event.target as HTMLElement)?.tagName)) return;
       if (event.key === "ArrowLeft" || event.key.toLowerCase() === "a") move(-1);
       else if (event.key === "ArrowRight" || event.key.toLowerCase() === "d") move(1);
+      else if (uiSettings.combinedSelect && stage === "characters" && event.key === "ArrowUp") { event.preventDefault(); moveArrival(-1); }
+      else if (uiSettings.combinedSelect && stage === "characters" && event.key === "ArrowDown") { event.preventDefault(); moveArrival(1); }
       else if (event.key === "Enter") accept();
       else if (event.key === "Escape" && stage === "spawn") fetchNui("multichar:spawn:exit");
     };
@@ -353,7 +366,20 @@ export function App() {
   return (
     <div className={`app stage-${stage}`}>
       {toast && <div className="toast"><span>{toast}</span><button aria-label="Dismiss" onClick={() => setToast(null)}><X size={15} /></button></div>}
-      {stage === "characters" && (
+      {stage === "characters" && uiSettings.combinedSelect && (
+        <CombinedScreen
+          characters={characters} character={character} index={index} canCreate={canCreate}
+          brand={uiSettings.brandName} profile={uiSettings.profile}
+          details={details} previewing={previewing} sceneName={sceneName} busy={busy}
+          arrivals={arrivals} arrivalId={arrivalId} arrivalsLoading={arrivalsLoading}
+          onPickCharacter={(next) => { if (next !== index && !busy && !creating && !deleting) { setPreviewing(true); setIndex(next); setDetails(false); } }}
+          onPickArrival={(id) => { if (!busy) setArrivalId(id); }}
+          onAccept={accept} onDetails={() => setDetails((value) => !value)} onDelete={() => setDeleting(true)}
+          onDisconnect={() => (confirmDisconnect ? setDisconnecting(true) : fetchNui("multichar:disconnect"))}
+        />
+      )}
+      {stage === "flight" && flight && <FlightScreen flight={flight} />}
+      {stage === "characters" && !uiSettings.combinedSelect && (
         <CharacterScreen
           characters={characters} character={character} index={index} count={slideCount} canCreate={canCreate}
           brand={uiSettings.brandName} showNewBadge={uiSettings.showNewSlotBadge} profile={uiSettings.profile}
@@ -380,10 +406,6 @@ const PREVIEW_STAGE_TEXT: Record<string, string> = {
 };
 
 function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn"; previewStage?: string | null }) {
-  // The subtitle names what is actually being waited on when Lua has told us.
-  // A world stream can legitimately take tens of seconds, and a fixed
-  // "streaming the world" line for all of it is indistinguishable from a hung
-  // panel -- which is how this screen got reported as stuck.
   const detail = (previewStage && PREVIEW_STAGE_TEXT[previewStage])
     || "Streaming the world and finding a clear camera angle";
 
@@ -396,8 +418,6 @@ function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn
   </div>;
 }
 
-// Every slot, in order, down the right edge. Display only: the arrows and the
-// keyboard are what move the selection, so it never takes the pointer.
 function SlotRail({ labels, selected }: { labels: string[]; selected: number }) {
   return <ul className="slot-rail" data-testid="slot-rail" aria-hidden>
     {labels.map((label, i) => <li key={`${i}-${label}`} className={i === selected ? "on" : undefined}>{label}</li>)}
@@ -450,6 +470,102 @@ function CharacterScreen(props: {
   </>;
 }
 
+function arrivalIcon(typeLoc?: string) {
+  if (typeLoc === "current") return <Clock size={16} />;
+  if (typeLoc === "house") return <House size={16} />;
+  if (typeLoc === "apartment") return <Building2 size={16} />;
+  return <MapPin size={16} />;
+}
+
+/**
+ * Character and arrival point on one screen. Characters on the left, the
+ * arrival points that character can start at on the right, Play in the middle.
+ * The camera flight to the chosen point runs after Play (see FlightScreen).
+ */
+function CombinedScreen(props: {
+  characters: Character[]; character: Character | null; index: number; canCreate: boolean;
+  brand: string; profile: ProfileText; details: boolean; previewing: boolean; sceneName: string; busy: boolean;
+  arrivals: SpawnLocation[]; arrivalId: string | null; arrivalsLoading: boolean;
+  onPickCharacter: (index: number) => void; onPickArrival: (id: string) => void;
+  onAccept: () => void; onDetails: () => void; onDelete: () => void; onDisconnect: () => void;
+}) {
+  const { character, arrivals, arrivalId } = props;
+  const arrival = arrivals.find((entry) => entry.id === arrivalId) ?? null;
+  const job = character ? roleLabel(character.job, "Civilian") : "";
+  const canPlay = !props.busy && !props.previewing && (!character || (!!arrival && !props.arrivalsLoading));
+  return <>
+    <span className="brand-mark corner-brand">{props.brand}</span>
+    <button className="quiet-button corner-action" aria-label="Disconnect" onClick={props.onDisconnect}><LogOut size={15} />Disconnect</button>
+
+    <aside className="pick-panel who-panel panel" aria-label="Characters">
+      <h3 className="pick-heading"><span>Who</span><span>{props.characters.length} {props.characters.length === 1 ? "character" : "characters"}</span></h3>
+      <ul className="pick-list">
+        {props.characters.map((entry, i) => <li key={entry.citizenid}>
+          <button className={`pick-card${i === props.index ? " on" : ""}`} aria-pressed={i === props.index} onClick={() => props.onPickCharacter(i)}>
+            <span className="pick-avatar">{characterInitials(entry)}</span>
+            <span className="pick-text"><strong>{characterName(entry)}</strong><small>{[roleLabel(entry.job, "Civilian"), gradeLabel(entry.job)].join(" · ")}</small></span>
+          </button>
+        </li>)}
+        {props.canCreate && <li>
+          <button className={`pick-card new${!character ? " on" : ""}`} aria-pressed={!character} onClick={() => props.onPickCharacter(props.characters.length)}>
+            <span className="pick-avatar"><Plus size={16} /></span>
+            <span className="pick-text"><strong>Create character</strong><small>Begin a new story</small></span>
+          </button>
+        </li>}
+      </ul>
+    </aside>
+
+    <aside className="pick-panel where-panel panel" aria-label="Arrival points">
+      <h3 className="pick-heading"><span>Where</span>{character && arrivals.length > 0 && <span>{arrivals.length} arrival points</span>}</h3>
+      {!character
+        ? <p className="pick-note">New characters begin at the first arrival point.</p>
+        : arrivals.length === 0
+          ? <p className="pick-note" role="status">{props.arrivalsLoading ? "Finding arrival points…" : "No arrival points available."}</p>
+          : <ul className={`pick-list${props.arrivalsLoading ? " loading" : ""}`}>
+            {arrivals.map((entry) => <li key={entry.id}>
+              <button className={`pick-card${entry.id === arrivalId ? " on" : ""}`} aria-pressed={entry.id === arrivalId} onClick={() => props.onPickArrival(entry.id)}>
+                <span className="pick-avatar">{arrivalIcon(entry.typeLoc)}</span>
+                <span className="pick-text"><strong>{entry.label}</strong>{entry.description && <small>{entry.description}</small>}</span>
+              </button>
+            </li>)}
+          </ul>}
+    </aside>
+
+    {props.details && character && <Dossier character={character} profile={props.profile} onClose={props.onDetails} onDelete={props.onDelete} />}
+
+    <section className="play-bar">
+      <h2>{character ? characterName(character) : "Create character"}</h2>
+      <p className="third-meta">{character ? `${job}${arrival ? ` → ${arrival.label}` : ""}` : "Use this slot to begin a new story in Los Santos."}</p>
+      <div className="third-actions">
+        {character && <button className="button ghost profile-button" aria-expanded={props.details} onClick={props.onDetails}>Profile</button>}
+        <button className="button primary play-button" disabled={!canPlay} onClick={props.onAccept}>
+          {props.busy ? <LoaderCircle className="spin" size={16} /> : null}
+          {character ? "Play" : "Create"}
+        </button>
+      </div>
+    </section>
+    <p className="third-kicker scene-label">{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</p>
+    <div className="key-hints combined-hints"><kbd>A</kbd><kbd>D</kbd><span>Character</span><kbd>↑</kbd><kbd>↓</kbd><span>Arrival</span><kbd>Enter</kbd><span>Play</span></div>
+  </>;
+}
+
+/**
+ * Shown while the camera flies to the chosen arrival point. The scene itself is
+ * the real game camera; this only adds a caption over it. Lua closes
+ * the whole UI once the player has arrived.
+ */
+function FlightScreen({ flight }: { flight: FlightState }) {
+  return <div className={`flight stage-${flight.stage}`} role="status" aria-live="polite">
+    <section className="flight-caption">
+      <p className="third-kicker">{flight.stage === "descent" ? "Arriving at" : "Flying to"}</p>
+      <h2>{flight.location}</h2>
+      {flight.character && <p className="third-meta">{flight.character}</p>}
+      <div className="flight-progress"><i /></div>
+      {flight.skippable && <p className="flight-skip"><kbd>Space</kbd><span>Skip</span></p>}
+    </section>
+  </div>;
+}
+
 function Dossier({ character, profile, onClose, onDelete }: { character: Character; profile: ProfileText; onClose: () => void; onDelete: () => void }) {
   const gang = character.gang?.name && character.gang.name !== "none" ? character.gang : null;
   const card = (key: ProfileCard, value: string, detail?: string) => {
@@ -476,8 +592,6 @@ function Dossier({ character, profile, onClose, onDelete }: { character: Charact
 type CreateField = "firstname" | "lastname" | "birthdate" | "nationality";
 type CreateErrors = Partial<Record<CreateField, string>>;
 
-// The NUI has no locale table; every UI string is a literal, so the
-// validation messages live together here for easy translation.
 const CREATE_MESSAGES = {
   firstnameRequired: "Enter a first name.",
   lastnameRequired: "Enter a last name.",
@@ -489,8 +603,6 @@ const CREATE_MESSAGES = {
 
 type CreateDraft = { firstname: string; lastname: string; birthdate: string; nationality: string; gender: number };
 
-// The configured default wins when it is selectable (or when free text is
-// allowed); otherwise a list-backed form starts on its first entry.
 function emptyCreateDraft(ui: UiSettings): CreateDraft {
   const list = ui.nationalities;
   const nationality = list.length === 0 ? (ui.defaultNationality || "USA")
@@ -509,10 +621,6 @@ function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onC
     if (field in errors) setErrors(({ [field as CreateField]: _cleared, ...rest }) => rest);
     onDraft({ ...draft, [field]: value });
   };
-  // X, Cancel and Escape are deliberate, so they ask before discarding typed data.
-  // The question is drawn in the page: the game's browser does not show
-  // window.confirm() and answers "no", which made X, Cancel and Escape do
-  // nothing as soon as a name was typed.
   const [asking, setAsking] = useState(false);
   const requestClose = () => {
     if (dirty && confirmDiscard && !asking) { setAsking(true); return; }
@@ -520,7 +628,6 @@ function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onC
     onClose();
   };
   const keepEditing = () => setAsking(false);
-  // A restored female draft needs the matching model back on screen.
   useEffect(() => { if (draft.gender === 1) fetchNui("multichar:createPreview", { gender: 1 }); }, []);
   const closeRef = useRef(requestClose);
   closeRef.current = requestClose;

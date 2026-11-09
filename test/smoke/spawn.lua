@@ -1,7 +1,3 @@
--- Spawn selector: the ordered location list and the preview budget the NUI
--- derives its timeout from. Both are things a `pairs` loop or a hardcoded
--- constant used to decide for us -- iteration order that differed per client,
--- and a 15s NUI timeout racing a preview allowed to take five times that.
 local scriptDir = debug.getinfo(1, 'S').source:match('@?(.*/)') or './'
 local testDir = scriptDir .. '../'
 local root = testDir .. '../'
@@ -19,15 +15,9 @@ _G.vector4 = function(x, y, z, w) return vector(x, y, z, w) end
 
 dofile(root .. 'config.lua')
 
--- scene.lua's only top-level statement is its resource-stop handler; every
--- native it touches lives inside a function, so the runtime loads under plain
--- Lua and spawnPreviewBudgetMs can be called for real rather than pattern-
--- matched out of the source.
 _G.AddEventHandler = function() end
 dofile(root .. 'scene.lua')
 
--- spawn.lua registers handlers at load; capture them so the location list can
--- be built the way the game builds it, through the real net event.
 local netHandlers, nuiMessages = {}, {}
 _G.RegisterNetEvent = function(name, handler) netHandlers[name] = handler end
 _G.RegisterNUICallback = function() end
@@ -47,7 +37,6 @@ local function buildList(position)
 end
 
 ------------------------------------------------------------------------------
--- Ordered list
 ------------------------------------------------------------------------------
 
 H.test('Config.spawns is an ordered array and every entry carries its own id', function()
@@ -59,8 +48,6 @@ H.test('Config.spawns is an ordered array and every entry carries its own id', f
         seen[entry.id] = true
         H.truthy(entry.coords and entry.label, ('entry %s needs coords and a label'):format(entry.id))
     end
-    -- A keyed table would leave `next(Config.spawns)` as the only notion of
-    -- "first", and that is not stable across clients or restarts.
     H.equal(Config.spawns[1].id, 'legion', 'the first ordered entry')
 end)
 
@@ -93,8 +80,6 @@ H.test('the same character rebuilt repeatedly always gets the same order', funct
 end)
 
 H.test('owned properties are appended in label order, behind every configured spawn', function()
-    -- Keyed by house id, exactly as qb-houses returns them -- so the order
-    -- this arrives in is whatever `pairs` feels like.
     ownedHouses = {
         h9 = { id = 'h9', label = 'Zeta Drive', coords = vector4(9.0, 9.0, 9.0, 0.0) },
         h1 = { id = 'h1', label = 'Alta Street', coords = vector4(1.0, 1.0, 1.0, 0.0) },
@@ -110,7 +95,6 @@ H.test('owned properties are appended in label order, behind every configured sp
 end)
 
 ------------------------------------------------------------------------------
--- Preview budget
 ------------------------------------------------------------------------------
 
 H.test('the preview budget covers the whole flight plus world streaming', function()
@@ -120,16 +104,9 @@ H.test('the preview budget covers the whole flight plus world streaming', functi
         + Config.sceneLimits.worldStreamTimeoutMs
 
     H.truthy(budget > floor, 'the budget must exceed the flight plus one full world-stream timeout')
-    -- The number the NUI used to hardcode. Keeping this here is the point: a
-    -- preview is allowed to take longer than the UI once believed.
     H.truthy(budget > 15000, 'the real budget is nowhere near the old 15s NUI timeout')
     H.equal(budget, 16250, 'shipped-default preview budget')
 
-    -- Down from 73250. The world-stream ceiling dropped from 30s to 8s once the
-    -- preview started parking the player ped at the destination (the streamer's
-    -- primary anchor) instead of waiting on a load scene from across the map,
-    -- and the budget counts ONE stream rather than two now that a slow area is
-    -- never abandoned for a fallback the player did not choose.
     H.truthy(budget < 20000, 'a preview that needs 20s is a bug, not patience')
 end)
 
@@ -155,13 +132,10 @@ H.test('both spawn payloads carry the budget the NUI needs to size its timeout',
 end)
 
 H.test('a superseded preview is reported as a distinct, benign reason', function()
-    -- The NUI keys its silence off this exact value; a rename here without a
-    -- rename there brings back a failure toast per abandoned preview.
     H.equal(SceneRuntime.PREVIEW_SUPERSEDED, 'superseded', 'the cancellation reason is part of the NUI contract')
 end)
 
 ------------------------------------------------------------------------------
--- qb-apartments handoff
 ------------------------------------------------------------------------------
 
 local apartmentsState, triggered, serverEvents = 'missing', {}, {}
@@ -250,6 +224,195 @@ H.test('an unanswered apartments handoff times out into the default spawn picker
     H.equal(actions[1], 'multichar:spawn:locations', 'fallback publishes locations')
     H.equal(actions[2], 'multichar:spawn:show', 'fallback opens the picker')
     apartmentsState = 'missing'
+end)
+
+------------------------------------------------------------------------------
+-- One-screen select: list before login, Play, then the flight after login.
+------------------------------------------------------------------------------
+
+local clock = 0
+_G.GetGameTimer = function() return clock end
+_G.Wait = function() clock = clock + 100 end
+local known, loaded, arrivals = { ABC12345 = true }, {}, {}
+_G.multicharHasCharacter = function(citizenid) return known[citizenid] == true end
+_G.multicharLoadCharacter = function(citizenid) loaded[#loaded + 1] = citizenid end
+_G.multicharArrive = function(location, isNew) arrivals[#arrivals + 1] = { location = location, isNew = isNew } end
+
+local function call(name, data)
+    local reply
+    nuiCallbacks[name](data, function(value) reply = value end)
+    return reply
+end
+
+local function reset()
+    apartmentsState = 'missing'
+    ownedHouses, nuiMessages, triggered, serverEvents, finished = {}, {}, {}, {}, {}
+    loaded, arrivals, timeouts = {}, {}, {}
+    Config.arrival.enabled = true
+    netHandlers['multichar:client:selectFailed'] = nil
+    multicharPlayFailed()
+end
+
+local function lastError()
+    for i = #nuiMessages, 1, -1 do
+        if nuiMessages[i].action == 'multichar:error' then return nuiMessages[i].data end
+    end
+end
+
+H.test('before login the list leads with a deferred last location, then the configured spawns, with no coordinates exposed', function()
+    reset()
+    local reply = call('multichar:spawn:list', { citizenid = 'ABC12345' })
+    H.truthy(reply.ok, 'list answered')
+    H.equal(reply.locations[1].id, 'current', 'last location leads')
+    H.equal(reply.locations[1].label, 'Last Location', 'labelled for the player')
+    H.equal(#reply.locations, #Config.spawns + 1, 'one entry per configured spawn')
+    H.equal(reply.locations[2].id, Config.spawns[1].id, 'configured order is kept')
+    for _, entry in ipairs(reply.locations) do
+        H.falsy(entry.coords, 'coordinates stay in Lua')
+        H.falsy(entry.preview, 'preview shots stay in Lua')
+    end
+end)
+
+H.test('owned properties appear in the list for that character', function()
+    reset()
+    ownedHouses = { h1 = { id = 'h1', label = 'Alta Street', coords = vector4(1.0, 1.0, 1.0, 0.0) } }
+    local reply = call('multichar:spawn:list', { citizenid = 'ABC12345' })
+    local last = reply.locations[#reply.locations]
+    H.equal(last.label, 'Alta Street', 'the property is offered')
+    H.equal(last.typeLoc, 'house', 'typed as a house for the icon')
+end)
+
+H.test('the list is refused for a character that is not on this account, or when the feature is off', function()
+    reset()
+    H.falsy(call('multichar:spawn:list', { citizenid = 'SOMEONEELSE' }).ok, 'unknown character')
+    H.falsy(call('multichar:spawn:list', {}).ok, 'no id')
+    Config.arrival.enabled = false
+    H.falsy(call('multichar:spawn:list', { citizenid = 'ABC12345' }).ok, 'feature off')
+    reset()
+end)
+
+H.test('Play logs the character in through the same server event as Continue and waits for the answer', function()
+    reset()
+    local reply = call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' })
+    H.truthy(reply.ok, 'accepted')
+    H.equal(loaded[1], 'ABC12345', 'the character is logged in')
+    H.equal(#arrivals, 0, 'no flight until the login has happened')
+    H.equal(#finished, 0, 'no spawn either')
+end)
+
+H.test('Play rejects an arrival point that character does not have, a stranger, and a second press', function()
+    reset()
+    local bad = call('multichar:play', { citizenid = 'ABC12345', locationId = 'atlantis' })
+    H.falsy(bad.ok, 'unknown arrival point')
+    H.truthy(lastError(), 'the player is told')
+    H.equal(#loaded, 0, 'and nobody is logged in')
+    H.falsy(call('multichar:play', { citizenid = 'NOPE', locationId = 'legion' }).ok, 'unknown character')
+    H.falsy(call('multichar:play', { citizenid = 'ABC12345' }).ok, 'no arrival point')
+    H.truthy(call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' }).ok, 'a valid play')
+    H.falsy(call('multichar:play', { citizenid = 'ABC12345', locationId = 'pillbox' }).ok, 'a second press while logging in')
+    H.equal(#loaded, 1, 'only one login')
+end)
+
+H.test('after login the chosen arrival point starts the flight, and the old picker never opens', function()
+    reset()
+    call('multichar:play', { citizenid = 'ABC12345', locationId = 'pillbox' })
+    nuiMessages = {}
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345', position = vector4(5.0, 6.0, 7.0, 8.0) }, false, nil)
+    netHandlers['qb-spawn:client:openUI'](true)
+    H.equal(#arrivals, 1, 'one flight')
+    H.equal(arrivals[1].location.id, 'pillbox', 'to the point that was chosen')
+    H.equal(arrivals[1].location.coords.x, Config.spawns[2].coords.x, 'with its real coordinates')
+    H.truthy(arrivals[1].location.preview, 'and its authored arrival shot')
+    H.equal(arrivals[1].isNew, false, 'an existing character')
+    for _, message in ipairs(nuiMessages) do
+        H.falsy(message.action == 'multichar:spawn:show' or message.action == 'multichar:spawn:locations', 'the spawn picker is not shown')
+    end
+end)
+
+H.test('Last Location gets its real coordinates from the saved position once logged in', function()
+    reset()
+    call('multichar:play', { citizenid = 'ABC12345', locationId = 'current' })
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345', position = vector4(5.0, 6.0, 7.0, 8.0) }, false, nil)
+    netHandlers['qb-spawn:client:openUI'](true)
+    H.equal(arrivals[1].location.id, 'current', 'flies to the last location')
+    H.equal(arrivals[1].location.coords.x, 5.0, 'at the saved position')
+    H.equal(arrivals[1].location.coords.w, 8.0, 'facing the saved heading')
+end)
+
+H.test('with no saved position, Last Location falls back to the first configured spawn instead of stranding the player', function()
+    reset()
+    call('multichar:play', { citizenid = 'ABC12345', locationId = 'current' })
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, false, nil)
+    netHandlers['qb-spawn:client:openUI'](true)
+    H.equal(#arrivals, 1, 'still flies')
+    H.equal(arrivals[1].location.id, Config.spawns[1].id, 'to the first configured spawn')
+end)
+
+H.test('openUI arriving before the list is built waits for it rather than opening the picker', function()
+    reset()
+    call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' })
+    local waits = 0
+    local plainWait = _G.Wait
+    _G.Wait = function()
+        waits = waits + 1
+        if waits == 3 then
+            netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, false, nil)
+        end
+        plainWait()
+    end
+    nuiMessages = {}
+    netHandlers['qb-spawn:client:openUI'](true)
+    _G.Wait = plainWait
+    H.equal(#arrivals, 1, 'the flight starts once the list is ready')
+    H.equal(arrivals[1].location.id, 'legion', 'to the chosen point')
+    H.equal(#nuiMessages, 0, 'and the picker stays closed')
+end)
+
+H.test('qb-apartments routing and brand-new characters keep the spawn picker, and cancel the pending Play', function()
+    reset()
+    call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' })
+    apartmentsState = 'started'
+    triggered = {}
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, false, nil)
+    H.equal(triggered[1] and triggered[1].name, 'apartments:client:setupSpawnUI', 'the legacy apartments route runs')
+    netHandlers['qb-spawn:client:openUI'](true)
+    H.equal(#arrivals, 0, 'no flight over the legacy route')
+
+    reset()
+    call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' })
+    nuiMessages = {}
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345' }, true, nil)
+    H.equal(nuiMessages[#nuiMessages].action, 'multichar:spawn:locations', 'a new character gets the picker list')
+    netHandlers['qb-spawn:client:openUI'](true)
+    H.equal(#arrivals, 0, 'no flight for the legacy picker path')
+end)
+
+H.test('a login that never answers clears the Play, tells the player, and lets them try again', function()
+    reset()
+    call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' })
+    H.equal(#timeouts, 1, 'a watchdog was set')
+    timeouts[1]()
+    H.truthy(lastError(), 'the player is told')
+    H.truthy(call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' }).ok, 'and can press Play again')
+end)
+
+H.test('a server-side refusal clears the Play so the next press works', function()
+    reset()
+    call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' })
+    H.falsy(call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' }).ok, 'blocked while pending')
+    multicharPlayFailed()
+    H.truthy(call('multichar:play', { citizenid = 'ABC12345', locationId = 'legion' }).ok, 'allowed again')
+end)
+
+H.test('without a pending Play the original flow is untouched: openUI opens the picker', function()
+    reset()
+    netHandlers['qb-spawn:client:setupSpawns']({ citizenid = 'ABC12345', position = vector4(5.0, 6.0, 7.0, 8.0) }, false, nil)
+    nuiMessages = {}
+    netHandlers['qb-spawn:client:openUI'](true)
+    local opened = false
+    for _, message in ipairs(nuiMessages) do if message.action == 'multichar:spawn:show' then opened = true end end
+    H.truthy(opened, 'the picker still opens for the Continue flow')
+    H.equal(#arrivals, 0, 'and no flight starts')
 end)
 
 H.report('spawn')

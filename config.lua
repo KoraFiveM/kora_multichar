@@ -1,24 +1,5 @@
--- Own config, self-contained -- matches real qb-spawn's convention of owning
--- its data rather than reading kora_core's shared registries. Named `Config.*`,
--- not `Kora.Spawns` (real qb-spawn's global) -- `kora_lib`'s `@kora_lib/init.lua`
--- already owns the global `Kora` as a live cross-resource proxy in this
--- codebase, so reusing that name here would shadow it. This has zero
--- backward-compat impact: Lua globals never cross resource VMs, so a third
--- party can only ever observe this resource through net events/callbacks,
--- never by reading its internal config table directly.
-
 Config = {}
 
--- Character select, the spawn carousel and the scene studio each isolate the
--- player in a personal routing bucket (base + server id) and restore the
--- previous bucket when the session ends (spawn into the world / studio closed).
--- kora_clothing's first-character fitting room is NOT part of this session: it
--- runs after the spawn, in its own bucket (Config.bucket.base + source).
---   enabled           : master switch. false = never change the player's bucket.
---   disablePopulation : turn ambient peds/vehicles off inside those personal
---                       buckets, so traffic and jet skis do not wander through
---                       the background of the preview. Only the personal bucket
---                       is affected; the normal world keeps its population.
 Config.buckets = {
     enabled = true,
     disablePopulation = true,
@@ -34,33 +15,11 @@ Config.sceneLimits = {
     maxCameras = 8,
     maxCues = 64,
     maxTimelineMs = 120000,
-    -- Asset loads (models, anim dicts, particle assets). These are hard
-    -- requirements -- a scene without its character model has nothing to show
-    -- -- so the budget is generous: a cold client on a slow disk can sit well
-    -- past ten seconds on its first request of the session.
     streamTimeoutMs = 20000,
-    -- World streaming. A CEILING, not a target: the wait ends as soon as
-    -- collision has loaded around the ped parked at the destination, which on a
-    -- warm client is a second or two. Expiring shows the scene anyway rather
-    -- than failing the preview -- the ped is there and the streamer is still
-    -- working, so the last of the map pops in behind the camera.
-    --
-    -- This was 30s, from when the preview waited on a load scene with the ped
-    -- still on the far side of the map: a signal that regularly never arrived,
-    -- so the budget had to be long enough to look like patience rather than a
-    -- hang. See streamWorld in scene.lua.
     worldStreamTimeoutMs = 8000,
 }
 
--- Cinematic travel between spawn previews. The camera lifts away from the
--- current location, cruises above the world while the destination streams,
--- then dives along the destination shot's approach vector. Travel time is
--- distance-scaled and clamped so nearby choices do not feel sluggish while
--- cross-map flights remain watchable.
 Config.spawnFlight = {
-    -- Cruise height above the CURRENT spawn point's look-at z, never above the
-    -- camera's current height (that made every rapid switch climb higher). The
-    -- cruise altitude is max(liftHeight, clamp(distance * 0.10, min, max)).
     liftHeight = 130.0,
     minAltitude = 180.0,
     maxAltitude = 420.0,
@@ -71,19 +30,6 @@ Config.spawnFlight = {
     unitsPerSecond = 650.0,
 }
 
--- Spawn location selector controls.
---   switchCooldownMs : minimum time between two location switches, applied to the
---                      arrow buttons, the arrow keys and A / D alike (in the UI,
---                      and again in Lua between two camera flights). 0 disables it.
---   settleMs         : browsing only changes the label; the camera flight, world
---                      stream and ped anchor start once the player has stayed on
---                      a location this long. Another switch restarts the wait, so
---                      cycling through five places costs one flight, not five.
---                      0 moves the camera on every switch.
---   lockWhileMoving  : true ignores location switches while the camera is flying
---                      to a location, until it has arrived. false lets a switch
---                      cancel the flight (the next one starts after settleMs).
---   hints            : text of the key hint bar under the selector.
 Config.spawnSelect = {
     switchCooldownMs = 800,
     settleMs = 1000,
@@ -97,47 +43,59 @@ Config.spawnSelect = {
     },
 }
 
+-- One-screen select + arrival flight. When enabled, the player picks a
+-- character AND an arrival point on the same screen; pressing Play logs the
+-- character in and the camera flies from the character scene to the arrival
+-- point (Config.spawnFlight tunes the flight), where the ped appears with a
+-- particle effect before control returns. When disabled, the original flow is
+-- used: Continue, then a separate spawn picker that previews each location.
+Config.arrival = {
+    enabled = true,
+    -- Space cuts the flight short. It still waits for the destination to
+    -- stream and still places the ped; only the camera travel is shortened.
+    skippable = true,
+    -- How long the ped stays invisible after being placed, so the saved
+    -- appearance (applied when the character loads) is on before they show.
+    settleMs = 350,
+    -- Time the ped takes to fade in once the arrival effect starts.
+    pedFadeMs = 900,
+    -- Time the camera takes to blend back to the gameplay camera.
+    handbackMs = 1400,
+    -- Added to the arrival point's z when the ped is placed. The ped then
+    -- settles onto the ground on its own while still invisible, so this only
+    -- changes where it starts falling from.
+    zOffset = -0.08,
+    -- Particle effect played at the ped's feet. Any loaded ptfx asset works;
+    -- set enabled = false for no effect. Pick the look in game.
+    ptfx = {
+        enabled = true,
+        asset = 'scr_rcbarry1',
+        effect = 'scr_alien_teleport',
+        scale = 1.0,
+        zOffset = 0.0,
+        -- true: players near the arrival see the effect too. The server relays
+        -- it (see qbmultichar:server:arrivalEffect) and plays only what is
+        -- configured here, never what a client asks for. false: only the
+        -- arriving player sees it.
+        synced = true,
+        -- How far from the arrival, in metres, another player still sees it.
+        syncRadius = 150.0,
+        releaseAfterMs = 4000,
+    },
+}
+
 Config.defaultScene = 'civilian'
 
--- If a character-select preview has not reported back after this long, the NUI
--- drops its loading cover and shows an error instead of leaving the player
--- stuck on it. 0 disables the watchdog.
 Config.previewWatchdogMs = 15000
 
--- Camera behaviour on the character-select screen (and the create-character
--- preview).
---   'focus' : the camera settles on the previewed ped -- the selected
---             character, or the create-slot ped when there are no characters --
---             and stays there. It only moves (smooth interpolation) when the
---             selection changes. Scene timeline camera cues are ignored; every
---             other cue (animations, vehicles, particles, sound) still plays.
---   'cycle' : the original behaviour. The scene timeline keeps cutting between
---             its close, focal and establishing cameras on a loop.
 Config.cameraMode = 'focus'
 
 Config.ui = {
-    -- Clicking outside the Create Identity dialog closes it. Off by default so
-    -- a stray click cannot throw away a half-typed identity.
     closeCreateOnBackdrop = false,
-    -- X, Cancel and Escape ask before discarding a half-typed identity. The
-    -- question is drawn inside the dialog: a native window.confirm() is not
-    -- shown by the game's embedded browser and answers "no", which left the
-    -- dialog impossible to close once any name was typed. false closes at once.
     confirmDiscardOnClose = true,
-    -- The disconnect button (top right of the character screen) asks
-    -- "Disconnect?" with Cancel / Disconnect before leaving the server.
-    -- false disconnects at once, as before.
     confirmDisconnect = true,
-    -- Brand text shown above "Choose your story" and on the loading cover
-    -- ("<brand> · CINEMATIC"). Set it to your server or framework name.
     brandName = 'Kora',
-    -- Shows a "NEW" badge on the "Available character slot" card.
     showNewSlotBadge = false,
-    -- Text on the cards of the character Profile panel. Every card has a label;
-    -- Birth date, Nationality and Citizen ID also have an optional description
-    -- line. An empty description ('') hides the line and the card collapses to
-    -- label + value. Career, Affiliation and Finances show live job/gang/money
-    -- detail instead, so only their labels are configurable.
     profile = {
         career      = { label = 'Career' },
         affiliation = { label = 'Affiliation' },
@@ -148,15 +106,6 @@ Config.ui = {
     },
 }
 
--- Nationality choices on the Create Identity form. The form shows a dropdown of
--- these entries and the server rejects any other value.
---   Config.nationalities           : the allowed values, shown and stored as written.
---                                    An empty list switches the form to free text.
---   Config.defaultNationality      : the entry selected when the form opens. Falls
---                                    back to the first entry if it is not in the list.
---   Config.allowFreeTextNationality: true = keep the free-text field (the list is
---                                    offered as suggestions) and accept any 2-32
---                                    character value.
 Config.nationalities = {
     'Argentine', 'Australian', 'Austrian', 'Belgian', 'Brazilian', 'British', 'Bulgarian', 'Canadian',
     'Chilean', 'Chinese', 'Colombian', 'Croatian', 'Czech', 'Danish', 'Dutch', 'Egyptian', 'Estonian',
@@ -169,14 +118,8 @@ Config.nationalities = {
 Config.defaultNationality = 'American'
 Config.allowFreeTextNationality = false
 
--- Custom static scenes may be added here. scenes.lua merges the six bundled
--- defaults without overwriting an explicitly configured id.
 Config.scenes = {}
 
--- Staff logout. `/logout` drops the character but keeps the connection, which
--- is what real qb-multicharacter's own admin-only logout command does. The
--- level is checked through kora_lib's permission gateway, so the same ace/Discord
--- grants that reach every other staff tool on the server reach this too.
 Config.logout = {
     enabled = true,
     command = 'logout',
@@ -191,10 +134,6 @@ Config.creator = {
     fastMultiplier = 3.0,
     lookSensitivity = 5.0,
     placementDistance = 8.0,
-    -- Models offered by the studio's Add picker. Plain `{ model, label }` rows;
-    -- the picker also accepts any model name typed in, so this list only has to
-    -- cover the common cases. Names are checked in game (IsModelInCdimage)
-    -- before an entity is added, so a typo here shows an error, not a broken scene.
     library = {
         ped = {
             { 's_m_y_xmech_02', 'Mechanic' }, { 's_m_y_construct_01', 'Construction worker' },
@@ -225,15 +164,6 @@ Config.creator = {
     },
 }
 
--- The spawn-picker's fixed location list, always offered alongside "last
--- location". `legion`/`pillbox` reuse kora_core/shared/locations.lua's
--- spawn_legion/spawn_pillbox coordinates re-expressed as vector4; the rest
--- are fresh defaults.
---
--- An ORDERED array whose entries carry their own `id`, not a table keyed by
--- id: `pairs` has no defined iteration order, so a keyed table handed the
--- carousel a different running order on each client and left "the first spawn
--- location" meaning nothing in particular. Move a block to reorder the picker.
 Config.spawns = {
     {
         id = 'legion',
@@ -261,22 +191,8 @@ Config.spawns = {
     },
 }
 
--- Where a brand-new character lands (real qb-multicharacter's
--- Config.DefaultSpawn, used by the closeNUIdefault path). New characters
--- spawn here directly; they never enter the live-preview spawn selector.
---
--- Deliberately the FIRST entry of Config.spawns rather than a fifth set of
--- coordinates nobody can see in the picker: "the first location" and "where a
--- new character wakes up" are the same decision, so promoting an entry to the
--- top of that list moves both. Its `coords` are shared by reference, which is
--- safe -- nothing here mutates a spawn's coordinates.
 Config.defaultSpawn = Config.spawns[1].coords
 
--- A brand-new character never inherits the previous character's clothes. With
--- resetAppearance on (default) and kora_clothing running, the ped is put into
--- kora_clothing's starter outfit (kora_clothing Config.starterOutfit) while the
--- screen is faded out, before the first spawn and before the character creator
--- opens. Off: the ped keeps whatever it was wearing.
 Config.newCharacter = {
     resetAppearance = true,
 }

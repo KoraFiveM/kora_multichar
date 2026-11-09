@@ -35,9 +35,6 @@ end
 local loggedOut = {}
 local exportTable = {
     kora_core = { setPlayerBucket = function(_, src, bucket) buckets[src] = bucket; TriggerEvent('qbvoice:server:bucketChanged', src); return true end,
-        -- Mirrors Core.player.logout: clears the replicated login state (which
-        -- is the ONLY thing the client follows back to selection) and reports
-        -- false when there is no player handle to drop.
         logout = function(_, src)
             if not states[src] or states[src]['qbcore:loggedIn'] ~= true then return false end
             states[src]['qbcore:loggedIn'] = false
@@ -48,8 +45,6 @@ local exportTable = {
 }
 _G.exports = setmetatable(exportTable, { __call = function(_, name, callback) exported[name] = callback end })
 
--- Held staff level per source, resolved through a faithful copy of
--- Kora.permissions.hasLevel's cascade (levels ordered most-privileged first).
 local heldLevel, permissionCalls = {}, {}
 local commandDefs, notifications = {}, {}
 
@@ -74,8 +69,6 @@ _G.Kora = {
     },
 }
 
--- Mirrors kora_lib's command dispatcher: a non-'user' permission needs a
--- checkPermission that returns true, or the command never reaches its handler.
 local function runCommand(name, src)
     local definition = assert(commandDefs[name], ('command %s was never registered'):format(name))
     local permission = definition.opts.permission or 'user'
@@ -86,6 +79,17 @@ local function runCommand(name, src)
     definition.handler(src)
     return true
 end
+
+local netEvents, clock, pedAt, players = {}, 0, {}, {}
+_G.RegisterNetEvent = function(name, callback) netEvents[name] = callback end
+_G.GetGameTimer = function() return clock end
+_G.GetPlayers = function()
+    local ids = {}
+    for _, id in ipairs(players) do ids[#ids + 1] = tostring(id) end
+    return ids
+end
+_G.GetPlayerPed = function(src) return pedAt[src] and src + 1000 or 0 end
+_G.GetEntityCoords = function(handle) return pedAt[handle - 1000] end
 
 dofile(root .. 'config.lua')
 dofile(root .. 'shared/scene.lua')
@@ -174,7 +178,6 @@ H.test('logout refuses without a character and during a cinematic session', func
     H.truthy(runCommand(Config.logout.command, 7), 'permission passes; the handler itself refuses')
     H.equal(#loggedOut, 0, 'a player with no character is never logged out')
 
-    -- Walk the real transition: selection opens pre-login, spawn follows it.
     H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'), 'selection opens before login')
     states[7]['qbcore:loggedIn'] = true
     H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'spawn'), 'spawn follows the login')
@@ -259,7 +262,7 @@ H.test('enabled = false never moves the player or touches population', function(
     H.equal(states[7]['qbmultichar:mode'], 'selection', 'mode state still published')
     states[7]['qbcore:loggedIn'] = true
     H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'spawn'))
-    buckets[7] = 99 -- another resource moved the player meanwhile
+    buckets[7] = 99
     H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
     H.equal(buckets[7], 99, 'leave does not restore a bucket it never changed')
     H.equal(#populationCalls, 0, 'no population writes')
@@ -312,6 +315,108 @@ H.test('GetServerLogs replies with an empty list', function()
     local result = callbacks['qb-multicharacter:server:GetServerLogs'](1)
     H.equal(type(result), 'table', 'table reply')
     H.equal(next(result), nil, 'empty reply')
+end)
+
+------------------------------------------------------------------------------
+-- Arrival effect relay
+------------------------------------------------------------------------------
+
+local function relay(src, ...)
+    _G.source = src
+    clientEvents = {}
+    netEvents['qbmultichar:server:arrivalEffect'](...)
+    local sent = {}
+    for _, event in ipairs(clientEvents) do
+        if event.name == 'qbmultichar:client:arrivalEffect' then sent[#sent + 1] = event end
+    end
+    return sent
+end
+
+local function arrivalScene()
+    clock = clock + 60000
+    pedAt = {
+        [21] = vector(100.0, 200.0, 30.0), [22] = vector(110.0, 205.0, 30.0), [23] = vector(900.0, 900.0, 30.0),
+        [24] = vector(101.0, 201.0, 30.0), [25] = vector(60.0, 160.0, 30.0),
+    }
+    players = { 21, 22, 23, 24, 25 }
+    buckets[21], buckets[22], buckets[23], buckets[24], buckets[25] = 0, 0, 0, 5, 0
+    states[21] = { ['qbcore:loggedIn'] = true }
+    Config.arrival.ptfx.enabled, Config.arrival.ptfx.synced, Config.arrival.ptfx.syncRadius = true, true, 150.0
+end
+
+H.test('an arrival effect is relayed to players nearby in the same bucket, and to nobody else', function()
+    arrivalScene()
+    local sent = relay(21, 100.0, 200.0, 29.0)
+    local targets = {}
+    for _, event in ipairs(sent) do targets[#targets + 1] = event.target end
+    table.sort(targets)
+    H.equal(table.concat(targets, ','), '22,25', 'near players in the same bucket; not the sender, the far player or the other bucket')
+end)
+
+H.test('what is relayed comes from the config, never from the client', function()
+    arrivalScene()
+    local sent = relay(21, 100.0, 200.0, 29.0, 'evil_asset', 'evil_effect', 99999)
+    H.equal(#sent > 0, true, 'relayed')
+    local args = sent[1].args
+    H.equal(args[1], Config.arrival.ptfx.asset, 'asset is the configured one')
+    H.equal(args[2], Config.arrival.ptfx.effect, 'effect is the configured one')
+    H.equal(args[3], Config.arrival.ptfx.scale, 'scale is the configured one')
+    H.equal(args[4], 100.0, 'the position is the one reported')
+    H.equal(args[6], 29.0, 'including height')
+end)
+
+H.test('the visibility radius comes from the config', function()
+    arrivalScene()
+    Config.arrival.ptfx.syncRadius = 20.0
+    local sent = relay(21, 100.0, 200.0, 29.0)
+    H.equal(#sent, 1, 'only the player 11 m away; the one 56 m away is out of range')
+    H.equal(sent[1].target, 22, 'the near player')
+    Config.arrival.ptfx.syncRadius = 150.0
+end)
+
+H.test('nothing is relayed when syncing or the effect is switched off', function()
+    arrivalScene()
+    Config.arrival.ptfx.synced = false
+    H.equal(#relay(21, 100.0, 200.0, 29.0), 0, 'synced = false')
+    arrivalScene()
+    Config.arrival.ptfx.enabled = false
+    H.equal(#relay(21, 100.0, 200.0, 29.0), 0, 'enabled = false')
+    arrivalScene()
+end)
+
+H.test('requests from a player who is not logged in, or without a ped, are ignored', function()
+    arrivalScene()
+    states[21]['qbcore:loggedIn'] = false
+    H.equal(#relay(21, 100.0, 200.0, 29.0), 0, 'not logged in')
+    arrivalScene()
+    pedAt[21] = nil
+    H.equal(#relay(21, 100.0, 200.0, 29.0), 0, 'no ped the server can see')
+end)
+
+H.test('a position far from where the server knows the player is, or not a number, is ignored', function()
+    arrivalScene()
+    H.equal(#relay(21, 600.0, 600.0, 30.0), 0, 'effect claimed 500 m from the player')
+    for index, bad in ipairs({ { 'x', 200.0, 29.0 }, { 100.0, 0 / 0, 29.0 }, { 100.0, 200.0, math.huge }, { 100.0, 200.0 }, {} }) do
+        arrivalScene()
+        H.equal(#relay(21, table.unpack(bad, 1, 3)), 0, ('bad position %d'):format(index))
+    end
+end)
+
+H.test('one player cannot flood the relay: a second request inside the cooldown is dropped', function()
+    arrivalScene()
+    H.truthy(#relay(21, 100.0, 200.0, 29.0) > 0, 'the first is relayed')
+    clock = clock + 1000
+    H.equal(#relay(21, 100.0, 200.0, 29.0), 0, 'a second a second later is not')
+    clock = clock + 5000
+    H.truthy(#relay(21, 100.0, 200.0, 29.0) > 0, 'allowed again after the cooldown')
+end)
+
+H.test('a player who drops loses their cooldown, so the slot is not held for the next occupant', function()
+    arrivalScene()
+    relay(21, 100.0, 200.0, 29.0)
+    _G.source = 21
+    for _, callback in ipairs(handlers.playerDropped or {}) do callback() end
+    H.truthy(#relay(21, 100.0, 200.0, 29.0) > 0, 'a fresh connection on the same id is not rate-limited by the old one')
 end)
 
 H.report('server')

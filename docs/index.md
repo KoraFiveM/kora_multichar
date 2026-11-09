@@ -357,6 +357,73 @@ cameras, and timeline cues.
 The studio never writes resource files or a database. Paste the copied output
 into configuration or another resource after reviewing it.
 
+## One-screen select and arrival flight
+
+With `Config.arrival.enabled = true` (the default) character and arrival point are
+chosen on one screen: characters on the left, that character's arrival points on
+the right, **Play** in the middle. Left/right and A/D change character, up/down
+change arrival point, Enter plays. The character's own cinematic scene stays as
+the backdrop; changing arrival point changes nothing in the world, so there is no
+cooldown, no settle delay and no loading cover while choosing. With it disabled
+the original **Continue** then spawn-carousel flow is used unchanged.
+
+- The arrival list is fetched per character (`multichar:spawn:list`) on the same
+  120 ms debounce as the scene preview. It is "Last Location" (its coordinates
+  are only known after login), then `Config.spawns`, then owned properties from
+  `qb-spawn:server:getOwnedHouses`. Coordinates and preview shots stay in Lua;
+  the UI only receives `id`, `label`, `description` and `typeLoc`.
+- **Play** sends `multichar:play { citizenid, locationId }`. Lua checks the
+  character belongs to the list it showed and the id belongs to that character's
+  list, then logs the character in with the same
+  `qb-multicharacter:server:loadUserData` event Continue uses. The server's
+  `qb-spawn:client:setupSpawns` and `openUI` answers start the flight instead of
+  opening the picker. A server refusal, or a login that has not answered after
+  20 s, releases the Play and shows an error.
+- The flight is real script cameras (`SceneRuntime.flyToArrival`): **lift** out
+  of the scene, **cruise** across while the destination streams, **descent**
+  into the location's `preview` shot (or a camera behind and above the ped when
+  it has none). The streaming focus only moves to the destination once the lift
+  is done, so the scene stays loaded while rising. The scene's weather and clock
+  are released before the descent so the player sees the real world. Timings and
+  altitude come from `Config.spawnFlight`. **Space** shortens the travel
+  (`Config.arrival.skippable`); the destination is still streamed.
+- The arrival (`SceneRuntime.completeArrival`) places the ped at the point (plus
+  `Config.arrival.zOffset`, default -0.08) while invisible and unfrozen, so it
+  drops onto the ground before it is shown. The arrival coordinate is the ped's
+  root, about a metre above the ground, so freezing it there would leave it
+  hovering. It then fires `QBCore:Server:OnPlayerLoaded` (so the saved or starter
+  outfit is applied unseen), waits `Config.arrival.settleMs`, plays the particle
+  effect at the ped's feet, fades the ped in over `pedFadeMs` and blends the
+  camera back to gameplay over `handbackMs`. HUD and controls stay off until it
+  finishes, exactly as during select, and `qbmultichar:client:spawnComplete`
+  fires at the end.
+- The effect is `Config.arrival.ptfx` (`asset`, `effect`, `scale`, `zOffset`,
+  `enabled`, `synced`, `syncRadius`). Its asset is requested when the flight
+  starts, not when the ped arrives, so it is resident when needed; if it is not
+  (or fails) the arrival loads it briefly on demand and then carries on without
+  it. Choose the look in game.
+- With `synced = true` (the default) players near the arrival see the effect
+  too. The arriving client reports only the position
+  (`qbmultichar:server:arrivalEffect`); the server checks the player is logged
+  in, that the position is within 25 m of where it knows their ped is, and that
+  they have not sent one in the last 5 s, then tells every player in the same
+  routing bucket within `syncRadius` metres
+  (`qbmultichar:client:arrivalEffect`) to play the effect named in the server's
+  own config. A client can never choose the asset, effect or scale other
+  players load. Each receiving client validates the event again and ignores it
+  while it is on character select. This is a relay rather than the game's
+  networked particle call so it does not depend on network scope. Set
+  `synced = false` to keep it local to the arriving player.
+- Where the ground under the arrival point can be found, the ped is placed at
+  standing height above it, so there is no fall to wait for and the effect
+  starts on the ground at once.
+- If the flight cannot run (no camera, a stale flight, an error) the original
+  fade-out, teleport, fade-in spawn is used, so a player is never left on the
+  select screen.
+- New characters take the same flight to `Config.defaultSpawn` after creation.
+  Characters routed through `qb-apartments`, and the legacy brand-new-character
+  picker, keep the spawn carousel.
+
 ## Spawn configuration
 
 `Config.spawns` is an **ordered array**, each entry carrying its own `id`. It

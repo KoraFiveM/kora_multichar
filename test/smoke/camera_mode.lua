@@ -1,6 +1,3 @@
--- Config.cameraMode: 'focus' keeps the camera on the previewed ped, 'cycle'
--- keeps the looping timeline camera cuts. Reuses the preview_lifecycle host so
--- the real scene.lua runs against inert natives; no rendering claims.
 local scriptDir = debug.getinfo(1, 'S').source:match('@?(.*/)') or './'
 local resource = arg[1] or scriptDir .. '../../'
 local support = arg[2] or resource

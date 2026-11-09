@@ -1,6 +1,3 @@
--- Data-only scene schema shared by the server registry, client runtime, scene
--- studio and plain-Lua smoke tests. No natives are used in this file.
-
 SceneSchema = SceneSchema or {}
 
 local ALLOWED_ENTITY_TYPES = { ped = true, vehicle = true, prop = true }
@@ -275,17 +272,9 @@ function SceneSchema.resolve(scenes, character, defaultId)
     end)
     if matches[1] then return matches[1].scene, matches[1].id end
 
-    -- No selector matched: an unemployed character, or any job/gang nobody has
-    -- authored a scene for. The configured default covers both.
     local fallback = scenes and scenes[defaultId]
     if fallback then return fallback, defaultId end
 
-    -- The default itself is missing -- a misconfigured Config.defaultScene, or
-    -- a default scene the registry rejected. Returning nil here is worse than
-    -- it looks: every caller's own retry chain re-resolves through this same
-    -- default, so one missing scene fails three times over and leaves the
-    -- player on a black screen. Any usable scene beats that, chosen by id so
-    -- the choice is deterministic rather than pairs() order.
     if scenes then
         local ids = {}
         for id, scene in pairs(scenes) do

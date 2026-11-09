@@ -1,7 +1,3 @@
--- Actual SceneRuntime/schema and kora_lib stream/loop APIs; all native boundaries
--- are controlled recorders. Release calls are measured, not native memory,
--- animation/FX geometry, or real engine ownership/reference-count behavior.
--- Run with test/run.sh; optional arguments: resource root, support root, scene source.
 local scriptDir = debug.getinfo(1, 'S').source:match('@?(.*/)') or './'
 local root = arg[1] or scriptDir .. '../../'
 local support = arg[2] or root
@@ -34,7 +30,7 @@ local function fresh()
     GetGameTimer = function() return world.timer end
     Wait = function(ms) world.timer = world.timer + math.max(ms or 0, 1); coroutine.yield('wait') end
     CreateThread = function(fn) world.threads[#world.threads + 1] = coroutine.create(fn) end
-    SetTimeout = function() end -- duration callbacks remain inert; explicit cleanup is under test.
+    SetTimeout = function() end
     AddEventHandler = function(name, fn) world.handlers[name] = fn end
     GetCurrentResourceName = function() return 'kora_multichar' end
     IsModelValid, HasModelLoaded = function() return true end, function() return true end

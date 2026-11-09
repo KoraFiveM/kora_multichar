@@ -31,9 +31,6 @@ H.test('preview entities stay local and cleanup covers cinematic state', functio
     H.truthy(runtime:find('Config.sceneLimits.worldStreamTimeoutMs', 1, true),
         'world streaming needs its own budget, separate from the hard asset-load one')
     H.truthy(runtime:find('RequestCollisionAtCoord(ticket.coords.x, ticket.coords.y, ticket.coords.z)', 1, true), 'background spawn streaming must keep collision requested')
-    -- A load scene is a streaming hint. On a cold client it often never
-    -- reports itself loaded, and the engine refuses to start one at all while
-    -- it is still finishing the join. Neither may cost the player their scene.
     H.truthy(runtime:find('STREAM_START_WINDOW_MS', 1, true),
         'a refused load scene must be retried, not read as a missing area')
     H.falsy(runtime:find("'scene area could not be streamed'", 1, true),
@@ -48,10 +45,7 @@ H.test('preview entities stay local and cleanup covers cinematic state', functio
     H.truthy(runtime:find('TaskVehicleDriveToCoordLongrange', 1, true), 'authored local road drivers should be able to follow scene routes')
     H.truthy(runtime:find('TaskBoatMission', 1, true), 'authored local watercraft drivers should use boat navigation')
     H.truthy(runtime:find('DoScreenFadeOut', 1, true) and runtime:find('DoScreenFadeIn', 1, true), 'world streaming should remain behind a native blackout')
-    -- Finishing the game's own first spawn creates a NEW player ped, silently
-    -- undoing beginMode's hide. That only ever happens on the first load of a
-    -- session, which is why this arrived as "it works on the second load".
-    H.truthy(runtime:find('if ped ~= state.hiddenPed then', 1, true),
+    H.truthy(runtime:find("Kora.cache.onChange('ped'", 1, true) and runtime:find('newPed ~= state.hiddenPed', 1, true),
         'the cinematic hide must be re-asserted when the engine swaps the player ped')
     H.truthy(client:find('local function awaitStablePlayerPed()', 1, true),
         'selection must wait for a real, settled player ped, not just a started session')
@@ -97,11 +91,6 @@ H.test('spawn exit is mandatory and every success uses the central finalizer', f
     H.truthy(client:find('SceneRuntime.endMode()', 1, true) and client:find('leaveServerMode()', 1, true), 'central finalizer clears client and server modes')
 end)
 
--- The cleared `qbmultichar:mode` bag is NOT a usable "player has spawned"
--- signal: leaveServerMode runs before the teleport, and the clear replicates
--- asynchronously on top of that. Consumers that must wait for a real spawn
--- (kora_clothing's first-character fitting room) need an explicit event, fired
--- after the ped is placed and the fade-in has completed.
 H.test('spawn completion is announced as an event, after the fade-in', function()
     H.truthy(client:find("TriggerEvent('qbmultichar:client:spawnComplete'", 1, true), 'the finalizer must announce spawn completion')
     H.truthy(client:find('while not IsScreenFadedIn() and GetGameTimer() < deadline do', 1, true),

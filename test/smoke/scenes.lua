@@ -131,9 +131,6 @@ H.test('priority wins over gang, ties use scene id, and fallback is deterministi
     H.equal(fallback.id, 'civilian', 'fallback carries normalized id')
 end)
 
--- The default scene serves two roles and has to hold up in both: the explicit
--- scene for an unemployed character, and the fallback for any job or gang
--- nobody has authored a scene for.
 H.test('the default scene covers unemployed explicitly and unconfigured jobs by fallback', function()
     local catalog = validatedCatalog()
 
@@ -142,14 +139,9 @@ H.test('the default scene covers unemployed explicitly and unconfigured jobs by 
     local _, unemployedId = SceneSchema.resolve(catalog, character('unemployed', 0), Config.defaultScene)
     H.equal(unemployedId, 'civilian', 'unemployed resolves to the default scene')
 
-    -- Priority 0 keeps it the lowest bidder, so an unemployed gang member still
-    -- gets their gang's scene rather than the default.
     local _, gangId = SceneSchema.resolve(catalog, character('unemployed', 0, 'ballas', 1), Config.defaultScene)
     H.equal(gangId, 'ballas', 'a configured gang scene still outranks the default')
 
-    -- A missing default used to return nil, which fails the caller's whole
-    -- retry chain (every attempt re-resolves through this same default) and
-    -- leaves the player on a black screen.
     local without = {}
     for id, scene in pairs(catalog) do if id ~= 'civilian' then without[id] = scene end end
     local orphan, orphanId = SceneSchema.resolve(without, character('taxi', 0), 'civilian')

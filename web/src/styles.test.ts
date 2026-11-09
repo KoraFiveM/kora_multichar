@@ -1,6 +1,4 @@
 import { describe, expect, it } from 'vitest';
-// The web project does not ship @types/node, so the Node built-ins used to read
-// the stylesheet are loaded untyped.
 // @ts-ignore
 import { readFileSync } from "node:fs";
 // @ts-ignore
@@ -12,7 +10,6 @@ describe('text selection', () => {
   it('disables selection on UI text but keeps editable fields selectable', () => {
     expect(css).toMatch(/#root \* \{ -webkit-user-select: none; user-select: none; \}/);
     expect(css).toMatch(/#root input, #root textarea, #root \[contenteditable=""\][^{]*\{ -webkit-user-select: text; user-select: text; \}/);
-    // Same-or-higher specificity as the blanket rule, otherwise it would not win.
     expect(css.indexOf('#root input')).toBeGreaterThan(css.indexOf('#root * {'));
   });
 
@@ -51,7 +48,6 @@ describe("theme", () => {
     expect(css).toMatch(/kbd \{[^}]*font: 500 12px var\(--font-mono, ui-monospace, monospace\);/);
     expect(css).toMatch(/\.json-editor textarea \{[^}]*font-family: var\(--font-mono, ui-monospace, SFMono-Regular, Consolas, monospace\);/);
     expect(css).toMatch(/\.cue-add input \{[^}]*font-family: var\(--font-mono, ui-monospace, monospace\);/);
-    // Every font-family outside @font-face goes through a theme variable.
     const declarations = css.replace(/@font-face \{[^}]*\}/g, "").match(/font(-family)?:[^;]*;/g) ?? [];
     for (const declaration of declarations) expect(declaration).toMatch(/var\(--font-(sans|heading|mono)/);
   });
@@ -59,13 +55,34 @@ describe("theme", () => {
   it("drops the decorative accent rail, gradients and coloured glows", () => {
     expect(css).not.toMatch(/\.identity-card::before/);
     expect(css).not.toMatch(/gradient\(/);
-    // A focus ring (0 0 0 Npx) is fine; a blurred glow (0 0 Npx) is not.
     expect(css).not.toMatch(/box-shadow: 0 0 [1-9]/);
   });
 
   it("centres icon buttons without inherited padding", () => {
     expect(css).toMatch(/\.icon-button, \.quiet-button \{[^}]*align-items: center; justify-content: center;[^}]*padding: 0; box-sizing: border-box/);
     expect(css).toMatch(/\.icon-button svg \{ display: block;/);
+  });
+});
+
+describe("scene text legibility", () => {
+  it("layers the scene text shadow so it has a tight dark edge plus a soft glow", () => {
+    const shadow = css.match(/--scene-text-shadow: ([^;]*);/)?.[1] ?? "";
+    expect(shadow.split(/,(?![^(]*\))/).length).toBeGreaterThanOrEqual(2);
+  });
+
+  it("draws overlay labels in the brighter scene colour, not plain muted grey", () => {
+    for (const selector of [".corner-brand", ".third-kicker", ".third-meta", ".slot-rail li", ".key-hints", ".profile-count", ".new-slot-chip"]) {
+      const escaped = selector.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const rule = css.match(new RegExp(`${escaped} \\{([^}]*)\\}`))?.[1] ?? "";
+      expect(rule, selector).toMatch(/color: var\(--scene-muted\)/);
+      expect(rule, selector).not.toMatch(/color: hsl\(var\(--muted-foreground\)\)/);
+    }
+    expect(css).toMatch(/--scene-muted: hsl\(var\(--foreground\) \/ \.85\)/);
+  });
+
+  it("gives the profile counter its own text shadow, while the action row keeps none", () => {
+    expect(css).toMatch(/\.profile-count \{[^}]*text-shadow: var\(--scene-text-shadow\)/);
+    expect(css).toMatch(/\.third-actions \{[^}]*text-shadow: none/);
   });
 });
 

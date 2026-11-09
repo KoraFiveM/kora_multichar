@@ -1,6 +1,3 @@
--- In-game scene studio. It edits the exact SceneSchema payload consumed by the
--- runtime and exports deterministic Lua; it never writes files or a database.
-
 local creator = {
     active = false,
     cursor = true,
@@ -112,8 +109,6 @@ local function placementPoint()
     return { x = coords.x, y = coords.y, z = coords.z, w = GetEntityHeading(PlayerPedId()) }
 end
 
--- `selected` (an entity id) tells the panel which row to select; nil leaves the
--- player's current selection alone.
 updateUi = function(errorMessage, selected)
     send('multichar:creator:state', {
         draft = creator.draft,
@@ -127,7 +122,6 @@ end
 
 local ENTITY_LIMIT_KEY = { ped = 'maxPeds', vehicle = 'maxVehicles', prop = 'maxProps' }
 
--- ped_1, vehicle_2, prop_3 ... first free number, so nobody types an id.
 local function nextEntityId(kind)
     local used = {}
     for _, entity in ipairs(creator.draft.entities) do used[entity.id] = true end
@@ -168,8 +162,6 @@ local function refreshPreview()
     return true
 end
 
--- Adds an entity at the crosshair. The panel sends only a type and a model: the
--- id is generated, the model is checked here, and the new row comes back selected.
 local function addEntity(payload)
     local kind = ENTITY_LIMIT_KEY[payload.type] and payload.type or 'prop'
     local model = type(payload.model) == 'string' and payload.model:match('^%s*(.-)%s*$') or ''
@@ -195,10 +187,6 @@ local function addEntity(payload)
     if refreshPreview() then updateUi(nil, id) end
 end
 
--- Hands the object to kora_lib's placement tool (surface snap, camera, numeric
--- input, confirm/cancel), then writes the confirmed transform back. The studio's
--- own freecam and NUI focus are released for the duration and restored after,
--- whether the player confirms or cancels.
 local function moveEntity(id)
     local entity = not creator.placing and findEntity(id)
     if not entity then return end

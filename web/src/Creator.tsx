@@ -20,13 +20,10 @@ export function CreatorScreen({ draft, scenes, cursor, exported, library, placin
   const [tab, setTab] = useState<Tab>("scene");
   const [picking, setPicking] = useState<EntityKind | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
-  // Lua names the row to select after an add or a move.
   useEffect(() => { if (focusId) { setSelected(focusId); setPicking(null); } }, [focusId]);
-  // A deleted or renamed entity must not leave a dangling selection.
   useEffect(() => { if (selected && !draft.entities.some((entity) => entity.id === selected)) setSelected(null); }, [draft.entities, selected]);
   const sceneOptions = useMemo(() => Object.keys(scenes).sort(), [scenes]);
 
-  // The placement tool draws its own HUD; the panel steps out of the way.
   if (placing) return null;
 
   return <div className="studio">
@@ -69,7 +66,6 @@ export function CreatorScreen({ draft, scenes, cursor, exported, library, placin
   </div>;
 }
 
-// Pick a model from the curated list, or type any model name. No ids, no types.
 function ModelPicker({ kind, library, onBack, onPick }: { kind: EntityKind; library: ModelLibrary; onBack: () => void; onPick: (model: string) => void }) {
   const [query, setQuery] = useState("");
   const { matches, custom } = filterLibrary(library, kind, query);
@@ -121,7 +117,7 @@ function SceneTab({ draft }: { draft: SceneDraft }) {
   useEffect(() => setSelectorText(JSON.stringify(draft.selectors ?? [], null, 2)), [draft.id, draft.selectors]);
   return <>
     <CreatorSection title="Scene" icon={<Clapperboard size={15} />}>
-      <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { creatorAction("metadata", { id: form.get("id"), label: form.get("label"), priority: Number(form.get("priority")), selectors: JSON.parse(selectorText) }); } catch { /* Lua returns useful validation on preview */ } }}>
+      <form onSubmit={(event) => { event.preventDefault(); const form = new FormData(event.currentTarget); try { creatorAction("metadata", { id: form.get("id"), label: form.get("label"), priority: Number(form.get("priority")), selectors: JSON.parse(selectorText) }); } catch {  } }}>
         <label>ID<input name="id" defaultValue={draft.id} /></label><label>Label<input name="label" defaultValue={draft.label} /></label><label>Priority<input name="priority" type="number" defaultValue={draft.priority} /></label>
         <label>Selectors JSON<textarea rows={4} value={selectorText} onChange={(event) => setSelectorText(event.target.value)} /></label><button className="mini-button"><Save size={13} />Apply metadata</button>
       </form>
@@ -165,7 +161,7 @@ function TimelineTab({ draft }: { draft: SceneDraft }) {
       </div></div>
       <JsonEditor label="Edit cue data" value={cue} onSave={(value) => creatorAction("replaceCue", { index: i + 1, value })} />
     </div>)}</div>
-    <div className="cue-add"><input value={cueText} onChange={(event) => setCueText(event.target.value)} /><button className="mini-button" onClick={() => { try { creatorAction("addCue", JSON.parse(cueText)); } catch { /* keep editable */ } }}><Plus size={13} />Add cue JSON</button></div>
+    <div className="cue-add"><input value={cueText} onChange={(event) => setCueText(event.target.value)} /><button className="mini-button" onClick={() => { try { creatorAction("addCue", JSON.parse(cueText)); } catch {  } }}><Plus size={13} />Add cue JSON</button></div>
   </CreatorSection>;
 }
 

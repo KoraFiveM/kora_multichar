@@ -4,8 +4,6 @@ local function revealCameras(focalOffset, focalLookAt, focalFov, establishingOff
     return {
         {
             id = 'close',
-            -- Local +Y is in front of a character facing the scene anchor's
-            -- heading, so every reveal opens on the face rather than the back.
             offset = closeOffset or vector3(0.65, 2.65, 1.68),
             lookAt = closeLookAt or vector3(0.0, 0.0, 1.34),
             fov = closeFov or 30.0,
@@ -34,15 +32,11 @@ local function revealTimeline(extraCues, durationMs)
     durationMs = durationMs or 18000
     local cues = {
         { at = 0, type = 'camera', camera = 'close' },
-        -- Hold the portrait just long enough to identify the character, then
-        -- ease out to the authored job/gang focal composition.
         { at = 1700, type = 'camera', camera = 'focal', transitionMs = 2100 },
         { at = 5200, type = 'camera', camera = 'establishing', transitionMs = 2400 },
         { at = 9400, type = 'camera', camera = 'focal', transitionMs = 2200 },
     }
     for _, cue in ipairs(extraCues or {}) do cues[#cues + 1] = cue end
-    -- Return to the portrait before the loop boundary so a looping scene never
-    -- hard-cuts from the focal shot back to the opening frame.
     cues[#cues + 1] = { at = durationMs - 3200, type = 'camera', camera = 'close', transitionMs = 1900 }
     return { durationMs = durationMs, loop = true, cues = cues }
 end
@@ -50,15 +44,7 @@ end
 local bundledScenes = {
     civilian = {
         label = 'Vespucci Beach · Sunset', priority = 0,
-        -- Serves two roles, and needs both. The selector makes it the explicit
-        -- scene for an unemployed character; being Config.defaultScene makes it
-        -- the fallback for any job or gang nobody has authored a scene for.
-        -- Priority 0 keeps it the lowest bidder, so a configured job or gang
-        -- scene always outranks it -- including for an unemployed character who
-        -- is in a gang.
         selectors = { { job = 'unemployed' } },
-        -- Dry sand east of the old offshore anchor. Local -Y runs out
-        -- toward the water, keeping both moving riders behind the character.
         anchor = vector4(-1560.5, -1180.5, 2.2, 270.0),
         environment = { hour = 19, minute = 10, weather = 'EXTRASUNNY', timecycle = 'scanline_cam_cheap', strength = 0.06 },
         character = { offset = vector4(0.0, 0.0, 0.0, 0.0), scenario = 'WORLD_HUMAN_STAND_MOBILE' },
@@ -86,8 +72,6 @@ local bundledScenes = {
     police = {
         label = 'Strawberry 24/7 · Robbery in Progress', priority = 200,
         selectors = { { job = 'police' } },
-        -- The forecourt outside the Strawberry 24/7 gives the scene open sky,
-        -- useful depth, and enough space for the camera safety fan to reframe.
         anchor = vector4(-61.25, -1759.2, 29.35, 50.0),
         environment = { hour = 23, minute = 18, weather = 'CLEAR', timecycle = 'scanline_cam_cheap', strength = 0.10 },
         character = { offset = vector4(0.0, 0.0, 0.0, 0.0), animation = { dict = 'random@arrests', name = 'generic_radio_chatter', flag = 49 } },
@@ -108,8 +92,6 @@ local bundledScenes = {
     ambulance = {
         label = 'Pillbox · Active Medical Response', priority = 200,
         selectors = { { job = 'ambulance' } },
-        -- Centers the ambulance on Pillbox's known outdoor vehicle bay rather
-        -- than rotating it underneath the hospital overhang.
         anchor = vector4(298.4, -572.1, 43.18, 35.0),
         environment = { hour = 20, minute = 5, weather = 'CLEAR', timecycle = 'scanline_cam_cheap', strength = 0.07 },
         character = { offset = vector4(0.0, 0.0, 0.0, 0.0), animation = { dict = 'mini@cpr@char_a@cpr_str', name = 'cpr_pumpchest', flag = 1 } },
@@ -124,10 +106,6 @@ local bundledScenes = {
         cameras = revealCameras(
             vector3(8.8, 7.8, 4.1), vector3(-1.4, 0.9, 0.8), 41.0,
             vector3(16.5, 13.2, 8.2), vector3(-1.3, 0.4, 0.65), 54.0,
-            -- The default portrait aims at standing head height; the CPR pose is
-            -- kneeling, so the character fell to the bottom of the frame. Stay
-            -- inside the portrait's 3.2 depth-of-field far limit (blurred
-            -- beyond it) and use a wider fov to keep the pose in shot.
             vector3(0.7, 2.7, 1.2), vector3(0.0, 0.0, 0.6), 38.0
         ),
         timeline = revealTimeline({

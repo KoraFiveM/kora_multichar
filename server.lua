@@ -1,10 +1,6 @@
--- Server authority for cinematic modes, scene registration, and the scene
--- studio command. Scene entities themselves are client-local; the server owns
--- only isolation, the replicated mode gate, and trusted resource definitions.
-
 local scenes = {}
 local sceneOwners = {}
-local sessions = {} -- [src] = { previousBucket, mode, isolated }
+local sessions = {}
 
 local function setBucket(src, bucket)
     local ok = pcall(function() exports.kora_core:setPlayerBucket(src, bucket) end)
@@ -14,14 +10,6 @@ local function setBucket(src, bucket)
     end
 end
 
--- Cleared mode is published as `false`, NOT as nil. Setting a state bag key to
--- nil is a DELETION, and a deletion does not replicate to the owning client the
--- way an ordinary value change does -- the client keeps reading the last mode
--- forever. Every consumer gates on this key (kora_hud's HUD stays hidden while a
--- cinematic mode is active, kora_clothing's first-character flow waits on it), so
--- a clear that never lands leaves the HUD hidden for the whole session. An
--- explicit falsy value keeps the clear a normal replicated change. Readers
--- treat nil and false alike, so nothing breaks if this key was never set.
 local NO_MODE = false
 
 local function writeMode(src, mode)
@@ -33,14 +21,6 @@ local function bucketFor(src, mode)
     return base + src
 end
 
--- Personal buckets (base + src) are never shared, so population can be switched
--- off per bucket without affecting anyone else. It is written on every entry
--- (true or false, from config) rather than once and then forgotten: slot numbers
--- are reused, so a stale disabled bucket must follow the current setting. There
--- is deliberately no restore on leave -- nobody is in the bucket afterwards, and
--- the next entry rewrites it. Entity lockdown is left untouched: the preview
--- scene's peds and vehicles are created client-side, so a strict lockdown would
--- only risk blocking them, and population is the thing being removed.
 local function isolate(src, mode)
     local bucket = bucketFor(src, mode)
     setBucket(src, bucket)
@@ -51,9 +31,6 @@ local function enterMode(src, mode)
     if mode ~= 'selection' and mode ~= 'spawn' and mode ~= 'creator' then return false, 'invalid cinematic mode' end
     local session = sessions[src]
     if not session then
-        -- Config.buckets.enabled = false never touches the player's bucket, so
-        -- there is nothing to restore either (a restore could clobber a bucket
-        -- another resource assigned in the meantime).
         local isolated = Config.buckets.enabled ~= false
         session = { previousBucket = isolated and GetPlayerRoutingBucket(src) or nil, mode = mode, isolated = isolated }
         sessions[src] = session
@@ -158,13 +135,7 @@ Kora.callback.register('qbmultichar:server:validateNationality', function(_, val
     return validateNationality(value)
 end, { rateLimit = { max = 8, window = 10000 } })
 
--- Staff gating goes through kora_lib's permission gateway rather than a rank
--- table over kora_core's getPermission. Kora.permissions.hasLevel accepts either
--- `kora_core.<level>` or the bare `group.<level>` principal (which is how this
--- test server's server.cfg actually grants admin), folds in Discord roles
--- where a server maps them, and owns the cascade -- so a 'god' satisfies an
--- 'admin' requirement without chaining ace principals by hand.
-local LEVELS = { 'god', 'admin', 'mod', 'user' } -- most-privileged first
+local LEVELS = { 'god', 'admin', 'mod', 'user' }
 local PERMISSION_OPTIONS = { prefix = 'qbcore' }
 
 ---Matches Kora.commands' checkPermission(source, permission) signature.
@@ -193,21 +164,12 @@ if Config.creator.enabled then
     })
 end
 
--- Staff logout. This drops the character and keeps the connection; it does NOT
--- tell any client to reopen character select. kora_core's logout clears the
--- replicated `qbcore:loggedIn` state, and client.lua follows that state --
--- so an admin resource or a character delete on a live handle returns the
--- player to selection through exactly the same path this command does.
 if Config.logout.enabled then
     Kora.commands.add(Config.logout.command, 'Drop your character and return to character select', nil, false, function(src)
         if Player(src).state['qbcore:loggedIn'] ~= true then
             Kora.notify.send(src, { type = 'error', message = 'You are not on a character.' })
             return
         end
-        -- Refused mid-cinematic: selection/spawn/creator each own the player's
-        -- routing bucket and camera, and tearing a character out from under
-        -- one of them would strand the client in a scene with no character to
-        -- return to. Leaving the studio or finishing the spawn is one keypress.
         if sessions[src] then
             Kora.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
             return
@@ -222,8 +184,6 @@ if Config.logout.enabled then
     })
 end
 
--- Stock /closeNUI: asks the caller's own client to drop a stuck selection NUI.
--- Refused during a cinematic session, which owns the routing bucket and camera.
 Kora.commands.add('closeNUI', 'Close the character selection screen if it is stuck', nil, false, function(src)
     if sessions[src] then
         Kora.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
@@ -232,13 +192,62 @@ Kora.commands.add('closeNUI', 'Close the character selection screen if it is stu
     TriggerClientEvent('qb-multicharacter:client:closeNUI', src)
 end)
 
--- Stock reads a server_logs table that kora has no equivalent of.
+-- The arrival effect, shown to players near the arrival.
+--
+-- The arriving client reports only WHERE it played the effect. What is played
+-- is read from Config here, so a client cannot make others load an arbitrary
+-- asset or effect. The position must be near where the server knows that
+-- player's ped is, the request is rate-limited per player, and only players in
+-- the same routing bucket and within Config.arrival.ptfx.syncRadius are told.
+local ARRIVAL_EFFECT_COOLDOWN_MS = 5000
+local ARRIVAL_EFFECT_MAX_FEET_DISTANCE = 25.0
+local lastArrivalEffect = {}
+
+local function distance3(ax, ay, az, bx, by, bz)
+    local dx, dy, dz = ax - bx, ay - by, az - bz
+    return math.sqrt(dx * dx + dy * dy + dz * dz)
+end
+
+RegisterNetEvent('qbmultichar:server:arrivalEffect', function(x, y, z)
+    local src = source
+    local config = Config.arrival and Config.arrival.ptfx
+    if type(config) ~= 'table' or config.enabled == false or config.synced ~= true then return end
+    if Player(src).state['qbcore:loggedIn'] ~= true then return end
+    if not (Kora.util.isFiniteNumber(x) and Kora.util.isFiniteNumber(y) and Kora.util.isFiniteNumber(z)) then return end
+
+    local now = GetGameTimer()
+    if lastArrivalEffect[src] and now - lastArrivalEffect[src] < ARRIVAL_EFFECT_COOLDOWN_MS then return end
+
+    local ped = GetPlayerPed(src)
+    if not ped or ped == 0 then return end
+    local origin = GetEntityCoords(ped)
+    if distance3(origin.x, origin.y, origin.z, x, y, z) > ARRIVAL_EFFECT_MAX_FEET_DISTANCE then return end
+    lastArrivalEffect[src] = now
+
+    local bucket = GetPlayerRoutingBucket(src)
+    local radius = tonumber(config.syncRadius) or 150.0
+    for _, id in ipairs(GetPlayers()) do
+        local target = tonumber(id)
+        if target and target ~= src and GetPlayerRoutingBucket(target) == bucket then
+            local targetPed = GetPlayerPed(target)
+            if targetPed and targetPed ~= 0 then
+                local at = GetEntityCoords(targetPed)
+                if distance3(at.x, at.y, at.z, origin.x, origin.y, origin.z) <= radius then
+                    TriggerClientEvent('qbmultichar:client:arrivalEffect', target,
+                        config.asset, config.effect, tonumber(config.scale) or 1.0, x, y, z)
+                end
+            end
+        end
+    end
+end)
+
 Kora.callback.register('qb-multicharacter:server:GetServerLogs', function()
     return {}
 end)
 
 AddEventHandler('playerDropped', function()
     sessions[source] = nil
+    lastArrivalEffect[source] = nil
 end)
 
 AddEventHandler('onResourceStop', function(resource)

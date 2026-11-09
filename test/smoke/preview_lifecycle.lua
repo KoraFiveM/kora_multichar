@@ -1,4 +1,3 @@
--- Actual Lua runtime/caller scheduling with inert natives; no rendering claims.
 local scriptDir = debug.getinfo(1, 'S').source:match('@?(.*/)') or './'
 local resource = arg[1] or scriptDir .. '../../'
 local support = arg[2] or resource
@@ -136,7 +135,6 @@ local function focus(e,q,new)
     if new then q.nui['multichar:createPreview']({gender=0},noop) else q.nui['multichar:preview']({citizenid='A'},noop) end
     equal(#q.threads,before+1,'one preview task'); return q.threads[#q.threads]
 end
--- Each case suspends actual traceCameraPath after the first pending result.
 for _,kind in ipairs({'character','static','flight'}) do
     for _,cancel in ipairs({'endMode','cleanupScene','replacement'}) do
         H.test(kind .. ' preview retires on ' .. cancel, function()
@@ -157,7 +155,6 @@ for _,kind in ipairs({'character','static','flight'}) do
         end)
     end
 end
--- Every saved-character fallback attempt may itself yield in a camera trace.
 for attempt=1,3 do
     for _,cancel in ipairs({'close','finish','cleanup','newfocus','resourceStop'}) do
         H.test('saved preview attempt ' .. attempt .. ' retires on ' .. cancel, function()
@@ -199,7 +196,6 @@ H.test('new-character preview still answers the NUI when the scene load throws',
     local last=q.messages[#q.messages]
     equal(last.action,'multichar:previewReady'); equal(last.data.ok,false)
 end)
--- These await phases precede SceneRuntime generation capture entirely.
 for _,phase in ipairs({'skin','catalog','newcatalog'}) do
     for _,cancel in ipairs({'close','finish','spawn','reentry','delete'}) do
         H.test(phase .. ' await retires on ' .. cancel, function()
@@ -251,7 +247,6 @@ for _,fallback in ipairs({'scene','model','failure'}) do
         equal(last.data.ok,fallback~='failure'); equal(last.data.scene,'default')
     end)
 end
--- Replacing an interpolating flight must release every superseded handle.
 for _,phase in ipairs({'lift','travel','descent'}) do
     for _,failure in ipairs({0,2,3,4}) do
         H.test(phase .. ' flight replacement cleans cameras with creation failure ' .. failure, function()

@@ -1,4 +1,4 @@
-import type { Character } from "./types";
+import type { Character, SpawnLocation } from "./types";
 
 export function isCharacter(value: unknown): value is Character {
   return !!value && typeof value === "object" && typeof (value as Character).citizenid === "string";
@@ -36,9 +36,6 @@ export function wrapIndex(index: number, delta: number, count: number): number {
 
 export type SlotTarget = { slot: number; label: string; empty: boolean };
 
-// What an arrow leads to: the carousel position it lands on (shown as
-// "Character N") and that character's name, or the free create slot.
-// null when there is nowhere else to go (the arrows are disabled then).
 export function slotTarget(characters: Character[], canCreate: boolean, index: number, delta: number): SlotTarget | null {
   const count = characters.length + (canCreate ? 1 : 0);
   if (count <= 1) return null;
@@ -49,21 +46,35 @@ export function slotTarget(characters: Character[], canCreate: boolean, index: n
     : { slot: next + 1, label: "Create New Character", empty: true };
 }
 
-// Spawn previews are raced against a timeout so the selector can never sit on
-// "Scouting your arrival" forever. The budget comes from Lua
-// (SceneRuntime.spawnPreviewBudgetMs), which derives it from the flight and
-// world-streaming config the preview actually obeys -- a constant here would
-// have to track four config values it cannot see, which is how the previous
-// hardcoded 15s ended up reporting healthy previews as failures.
+/**
+ * Which arrival point is selected when a character's list arrives: the one the
+ * player already had selected if this character also offers it, otherwise
+ * their last location, otherwise the first entry.
+ */
+export function defaultArrivalId(list: SpawnLocation[], preferred?: string | null): string | null {
+  if (preferred && list.some((entry) => entry.id === preferred)) return preferred;
+  return list.find((entry) => entry.typeLoc === "current")?.id ?? list[0]?.id ?? null;
+}
+
+export function parseArrivalList(value: unknown): SpawnLocation[] {
+  const rows = (value && typeof value === "object" ? (value as { locations?: unknown }).locations : null);
+  if (!Array.isArray(rows)) return [];
+  return rows.flatMap((row): SpawnLocation[] => {
+    if (!row || typeof row !== "object") return [];
+    const { id, label, description, typeLoc } = row as Record<string, unknown>;
+    if (typeof id !== "string" || !id || typeof label !== "string" || !label) return [];
+    return [{
+      id, label,
+      description: typeof description === "string" ? description : undefined,
+      typeLoc: typeof typeLoc === "string" ? typeLoc : undefined,
+    }];
+  });
+}
+
 export const SPAWN_PREVIEW_HEADROOM_MS = 3_000;
 
-// Used only when the payload carries no budget at all, e.g. a Lua side that
-// predates the field. Generous on purpose: its whole job is to release the
-// selector eventually, not to be accurate.
 export const SPAWN_PREVIEW_FALLBACK_TIMEOUT_MS = 90_000;
 
-// SceneRuntime.PREVIEW_SUPERSEDED. A preview the player abandoned by picking
-// somewhere else is not a failure and must not raise a toast.
 export const SPAWN_PREVIEW_SUPERSEDED = "superseded";
 
 export function spawnPreviewTimeout(budgetMs: unknown): number {
@@ -73,8 +84,6 @@ export function spawnPreviewTimeout(budgetMs: unknown): number {
   return budgetMs + SPAWN_PREVIEW_HEADROOM_MS;
 }
 
-// Scene studio model picker. The library arrives from Config.creator.library as
-// `[model, label]` rows per entity type.
 export type EntityKind = "ped" | "vehicle" | "prop";
 export type ModelRow = [model: string, label: string];
 export type ModelLibrary = Partial<Record<EntityKind, ModelRow[]>>;
@@ -95,9 +104,6 @@ export function parseLibrary(raw: unknown): ModelLibrary {
   return library;
 }
 
-// `matches`: library rows whose model or label contains the query.
-// `custom`: the typed text, offered as "use this model name" when it is a valid
-// model name that is not already an exact library entry.
 export function filterLibrary(library: ModelLibrary, kind: EntityKind, query: string): { matches: ModelRow[]; custom: string | null } {
   const needle = query.trim().toLowerCase();
   const rows = library[kind] ?? [];

@@ -226,7 +226,6 @@ describe('spawn and studio', () => {
     expect(focusCalls()).toEqual(['a']);
     await act(async () => { resolutions.shift()?.({ ok: true }); await Promise.resolve(); });
 
-    // Rapid browsing: the label follows every press, the camera does nothing.
     fireEvent.keyDown(window, { key: 'd' });
     fireEvent.keyDown(window, { key: 'ArrowRight' });
     expect(screen.getByRole('heading', { name: 'Charlie' })).toBeTruthy();
@@ -235,7 +234,6 @@ describe('spawn and studio', () => {
     act(() => vi.advanceTimersByTime(1));
     expect(focusCalls()).toEqual(['a', 'c']);
 
-    // Locked while flying.
     expect(screen.getByRole('status').textContent).toContain('Flying to Charlie');
     expect((screen.getByRole('button', { name: 'Next location' }) as HTMLButtonElement).disabled).toBe(true);
     fireEvent.keyDown(window, { key: 'd' });
@@ -243,13 +241,11 @@ describe('spawn and studio', () => {
     await act(async () => { resolutions.shift()?.({ ok: true }); await Promise.resolve(); });
     expect((screen.getByRole('button', { name: 'Next location' }) as HTMLButtonElement).disabled).toBe(false);
 
-    // Browsing away and back to the shown place costs no flight.
     fireEvent.keyDown(window, { key: 'd' });
     fireEvent.keyDown(window, { key: 'a' });
     act(() => vi.advanceTimersByTime(2000));
     expect(focusCalls()).toEqual(['a', 'c']);
 
-    // Spawning during the wait goes straight to the pick, with no flight after.
     fireEvent.keyDown(window, { key: 'd' });
     expect(screen.getByRole('heading', { name: 'Alpha' })).toBeTruthy();
     fireEvent.keyDown(window, { key: 'Enter' });
@@ -280,9 +276,6 @@ describe('spawn and studio', () => {
     message('multichar:spawn:locations', { locations: [{ id: 'legion', label: 'Legion Square', description: 'City centre' }] });
     message('multichar:spawn:show', { visible: true, previewBudgetMs: 40_000 });
 
-    // Lua is still legitimately working here -- a preview allowed 40s must not
-    // be declared broken at 15s, which is what the old hardcoded timeout did
-    // to every slow world stream.
     await act(async () => { vi.advanceTimersByTime(20_000); await Promise.resolve(); });
     expect(screen.getByText('Scouting your arrival')).toBeTruthy();
     expect(screen.queryByText('Arrival preview timed out. You can still spawn here.')).toBeNull();
@@ -307,11 +300,6 @@ describe('spawn and studio', () => {
   });
 
   it('drops the cover as soon as Lua says the camera is live, without waiting for the callback', async () => {
-    // This is the "stuck on Scouting your arrival" report. The focus callback
-    // only answers once the whole preview has settled, and the NUI races it
-    // against a budget derived from the real worst case -- over a minute. The
-    // camera is usually live long before that, so the cover has to come down on
-    // Lua's own signal rather than on the answer.
     nui.fetch.mockImplementation((...args: unknown[]) => args[0] === 'multichar:spawn:focus'
       ? new Promise(() => {})
       : Promise.resolve({}));
@@ -326,8 +314,6 @@ describe('spawn and studio', () => {
     expect(screen.queryByText('Scouting your arrival')).toBeNull();
     expect((screen.getByRole('button', { name: /spawn here/i }) as HTMLButtonElement).disabled).toBe(false);
 
-    // And the still-pending callback must not then report a timeout for a
-    // preview the player has already been looking at.
     await act(async () => { vi.advanceTimersByTime(80_000); await Promise.resolve(); });
     expect(screen.queryByText('Arrival preview timed out. You can still spawn here.')).toBeNull();
   });
@@ -345,8 +331,6 @@ describe('spawn and studio', () => {
     await act(async () => { message('multichar:spawn:previewStage', { stage: 'streaming' }); await Promise.resolve(); });
     expect(screen.getByText('Streaming the area around your arrival point')).toBeTruthy();
 
-    // An unknown stage falls back to the generic line rather than rendering
-    // nothing -- a blank subtitle reads as a broken panel.
     await act(async () => { message('multichar:spawn:previewStage', { stage: 'something-new' }); await Promise.resolve(); });
     expect(screen.getByText(/Streaming the world and finding a clear camera angle/i)).toBeTruthy();
   });
@@ -535,7 +519,6 @@ describe('spawn and studio', () => {
       openCreate({ closeCreateOnBackdrop: true });
       fireEvent.click(document.querySelector('.modal-backdrop')!);
       expect(screen.queryByLabelText('First name')).toBeNull();
-      // Closing restarts the carousel preview, which must finish before Create is enabled.
       act(() => vi.advanceTimersByTime(121));
       message('multichar:previewReady', { scene: 'civilian', ok: true });
       fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
@@ -543,7 +526,6 @@ describe('spawn and studio', () => {
     });
 
     it('asks in the page, never via window.confirm, before X or Escape discards typed data', () => {
-      // The game browser answers window.confirm with "no"; the dialog must not depend on it.
       const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
       openCreate();
       fireEvent.click(screen.getByRole('button', { name: 'Close' }));
@@ -686,5 +668,192 @@ describe('branding, theme and nationality', () => {
     expect(field.tagName).toBe('INPUT');
     fireEvent.change(field, { target: { value: 'Quasar' } });
     expect(field.value).toBe('Quasar');
+  });
+});
+
+describe('one-screen select and arrival flight', () => {
+  const bob = { ...jane, citizenid: 'BOB2', cid: 2, charinfo: { ...jane.charinfo, firstname: 'Bob' }, job: { name: 'unemployed', label: 'Civilian', grade: { level: 0, name: 'Unemployed' } } };
+  const lists: Record<string, Array<{ id: string; label: string; description?: string; typeLoc?: string }>> = {
+    JANE1: [
+      { id: 'legion', label: 'Legion Square', description: 'City centre' },
+      { id: 'current', label: 'Last Location', typeLoc: 'current' },
+      { id: 'house:7', label: 'Eclipse Towers', typeLoc: 'house' },
+    ],
+    BOB2: [
+      { id: 'legion', label: 'Legion Square' },
+      { id: 'paleto', label: 'Paleto Bay' },
+    ],
+  };
+
+  function useLists(extra?: (callback: string, data: unknown) => unknown) {
+    nui.fetch.mockImplementation(((callback: string, data: { citizenid?: string }) => {
+      if (callback === 'multichar:spawn:list') return Promise.resolve({ ok: true, locations: lists[data.citizenid ?? ''] ?? [] });
+      if (callback === 'multichar:play') return Promise.resolve({ ok: true });
+      return Promise.resolve(extra ? extra(callback, data) : {});
+    }) as never);
+  }
+
+  async function openCombined(characters = [jane, bob]) {
+    render(<App />);
+    message('multichar:show', { characters, maxCharacters: 3, ui: { combinedSelect: true } });
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    message('multichar:previewReady', { scene: 'police', ok: true });
+  }
+
+  const playButton = () => screen.getByRole('button', { name: /^play$/i }) as HTMLButtonElement;
+  const row = (name: string) => screen.getByRole('button', { name: new RegExp(name) });
+
+  it('lists characters and the selected character\'s arrival points together, preferring their last location', async () => {
+    useLists();
+    await openCombined();
+    expect(nui.fetch).toHaveBeenCalledWith('multichar:spawn:list', { citizenid: 'JANE1' });
+    expect(row('Jane Doe').getAttribute('aria-pressed')).toBe('true');
+    expect(row('Bob Doe').getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /Create character/ })).toBeTruthy();
+    expect(row('Last Location').getAttribute('aria-pressed')).toBe('true');
+    expect(row('Legion Square').getAttribute('aria-pressed')).toBe('false');
+    expect(screen.getByRole('button', { name: /Eclipse Towers/ })).toBeTruthy();
+  });
+
+  it('plays with the character and the chosen arrival point in one call, never the old select', async () => {
+    useLists();
+    await openCombined();
+    fireEvent.click(row('Legion Square'));
+    expect(row('Legion Square').getAttribute('aria-pressed')).toBe('true');
+    expect(playButton().disabled).toBe(false);
+    fireEvent.click(playButton());
+    expect(nui.fetch).toHaveBeenCalledWith('multichar:play', { citizenid: 'JANE1', locationId: 'legion' });
+    expect(nui.fetch).not.toHaveBeenCalledWith('multichar:select', expect.anything());
+    expect(nui.fetch).not.toHaveBeenCalledWith('multichar:spawn:focus', expect.anything());
+  });
+
+  it('keeps Play disabled until the scene and the arrival list are both ready', async () => {
+    useLists();
+    render(<App />);
+    message('multichar:show', { characters: [jane], maxCharacters: 1, ui: { combinedSelect: true } });
+    expect(playButton().disabled).toBe(true);
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    expect(playButton().disabled).toBe(true);
+    message('multichar:previewReady', { scene: 'police', ok: true });
+    expect(playButton().disabled).toBe(false);
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(nui.fetch).toHaveBeenCalledWith('multichar:play', { citizenid: 'JANE1', locationId: 'current' });
+  });
+
+  it('moves the arrival point with Up/Down and the character with A/D, refetching the list per character', async () => {
+    useLists();
+    await openCombined();
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    expect(row('Eclipse Towers').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.keyDown(window, { key: 'ArrowDown' });
+    expect(row('Legion Square').getAttribute('aria-pressed')).toBe('true');
+    fireEvent.keyDown(window, { key: 'ArrowUp' });
+    expect(row('Eclipse Towers').getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.keyDown(window, { key: 'd' });
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    expect(nui.fetch).toHaveBeenCalledWith('multichar:spawn:list', { citizenid: 'BOB2' });
+    expect(screen.getByRole('button', { name: /Paleto Bay/ })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: /Eclipse Towers/ })).toBeNull();
+  });
+
+  it('keeps the chosen arrival point when the next character offers it, otherwise falls back sensibly', async () => {
+    useLists();
+    await openCombined();
+    fireEvent.click(row('Legion Square'));
+    fireEvent.click(row('Bob Doe'));
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    expect(row('Legion Square').getAttribute('aria-pressed')).toBe('true');
+
+    fireEvent.click(row('Jane Doe'));
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    fireEvent.click(row('Eclipse Towers'));
+    fireEvent.click(row('Bob Doe'));
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    expect(row('Legion Square').getAttribute('aria-pressed')).toBe('true');
+  });
+
+  it('drops an arrival list that answers after the player has moved on', async () => {
+    let releaseJane: (value: unknown) => void = () => {};
+    nui.fetch.mockImplementation(((callback: string, data: { citizenid?: string }) => {
+      if (callback !== 'multichar:spawn:list') return Promise.resolve({});
+      if (data.citizenid === 'JANE1') return new Promise((resolve) => { releaseJane = resolve; });
+      return Promise.resolve({ ok: true, locations: lists.BOB2 });
+    }) as never);
+    await openCombined();
+    fireEvent.click(row('Bob Doe'));
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    expect(screen.getByRole('button', { name: /Paleto Bay/ })).toBeTruthy();
+    await act(async () => { releaseJane({ ok: true, locations: lists.JANE1 }); await Promise.resolve(); });
+    expect(screen.queryByRole('button', { name: /Eclipse Towers/ })).toBeNull();
+    expect(screen.getByRole('button', { name: /Paleto Bay/ })).toBeTruthy();
+  });
+
+  it('releases the screen when Lua refuses the play', async () => {
+    useLists((callback) => callback === 'multichar:play' ? { ok: false } : {});
+    nui.fetch.mockImplementation(((callback: string, data: { citizenid?: string }) => {
+      if (callback === 'multichar:spawn:list') return Promise.resolve({ ok: true, locations: lists[data.citizenid ?? ''] });
+      if (callback === 'multichar:play') return Promise.resolve({ ok: false });
+      return Promise.resolve({});
+    }) as never);
+    await openCombined();
+    fireEvent.click(playButton());
+    await act(async () => { await Promise.resolve(); });
+    expect(playButton().disabled).toBe(false);
+  });
+
+  it('has no arrival list for the create slot and opens the create dialog from its button', async () => {
+    useLists();
+    await openCombined([jane]);
+    fireEvent.click(screen.getByRole('button', { name: /Create character/ }));
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    expect(screen.getByText(/begin at the first arrival point/i)).toBeTruthy();
+    message('multichar:previewReady', { scene: 'police', ok: true });
+    fireEvent.click(screen.getByRole('button', { name: /^create$/i }));
+    expect(screen.getByRole('heading', { name: 'Create character', level: 3 })).toBeTruthy();
+    expect(nui.fetch).not.toHaveBeenCalledWith('multichar:play', expect.anything());
+  });
+
+  it('shows the flight caption, follows its stages, and goes away when Lua closes the UI', async () => {
+    useLists();
+    await openCombined([jane]);
+    message('multichar:flight:start', { location: 'Legion Square', character: 'Jane Doe', skippable: true });
+    expect(screen.queryByRole('button', { name: /^play$/i })).toBeNull();
+    expect(screen.getByText('Flying to')).toBeTruthy();
+    expect(screen.getByRole('heading', { name: 'Legion Square' })).toBeTruthy();
+    expect(screen.getByText('Jane Doe')).toBeTruthy();
+    expect(screen.getByText('Skip')).toBeTruthy();
+    expect(document.querySelector('.flight.stage-lift')).not.toBeNull();
+    expect(document.querySelector('.letterbox'), 'no black bars over the flight').toBeNull();
+
+    message('multichar:flight:stage', { stage: 'cruise' });
+    expect(document.querySelector('.flight.stage-cruise')).not.toBeNull();
+    message('multichar:flight:stage', { stage: 'descent' });
+    expect(screen.getByText('Arriving at')).toBeTruthy();
+
+    message('multichar:close', {});
+    expect(document.querySelector('.flight')).toBeNull();
+  });
+
+  it('hides the skip hint when skipping is switched off, and ignores browsing keys mid-flight', async () => {
+    useLists();
+    await openCombined();
+    nui.fetch.mockClear();
+    message('multichar:flight:start', { location: 'Pillbox Hill', skippable: false });
+    expect(screen.queryByText('Skip')).toBeNull();
+    fireEvent.keyDown(window, { key: 'ArrowRight' });
+    fireEvent.keyDown(window, { key: 'Enter' });
+    expect(nui.fetch).not.toHaveBeenCalled();
+  });
+
+  it('keeps the original Continue flow when the one-screen select is off', async () => {
+    useLists();
+    render(<App />);
+    message('multichar:show', { characters: [jane], maxCharacters: 1, ui: { combinedSelect: false } });
+    await act(async () => { vi.advanceTimersByTime(121); await Promise.resolve(); });
+    expect(nui.fetch).not.toHaveBeenCalledWith('multichar:spawn:list', expect.anything());
+    message('multichar:previewReady', { scene: 'police', ok: true });
+    fireEvent.click(screen.getByRole('button', { name: /continue/i }));
+    expect(nui.fetch).toHaveBeenCalledWith('multichar:select', { citizenid: 'JANE1' });
   });
 });

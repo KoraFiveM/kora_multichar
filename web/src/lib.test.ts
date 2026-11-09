@@ -46,9 +46,6 @@ describe("identity and navigation", () => {
 describe("spawn preview timeout", () => {
   it("derives the timeout from the budget Lua reports, never from a constant of its own", () => {
     expect(spawnPreviewTimeout(73_250)).toBe(73_250 + SPAWN_PREVIEW_HEADROOM_MS);
-    // The whole point: a longer Lua budget produces a longer timeout with no
-    // edit here. The old hardcoded 15s could not do that, which is why a slow
-    // world stream looked like a failed preview.
     expect(spawnPreviewTimeout(120_000)).toBeGreaterThan(spawnPreviewTimeout(73_250));
     expect(spawnPreviewTimeout(73_250)).toBeGreaterThan(73_250);
   });
@@ -72,5 +69,34 @@ describe("studio model picker", () => {
     expect(filterLibrary(library, "ped", "skat")).toEqual({ matches: [["a_m_y_skater_01", "Skater"]], custom: "skat" });
     expect(filterLibrary(library, "ped", "S_M_Y_COP_01").custom).toBeNull();
     expect(filterLibrary(library, "ped", "not a model!").custom).toBeNull();
+  });
+});
+
+import { defaultArrivalId, parseArrivalList } from "./lib";
+
+describe("arrival points", () => {
+  const list = [
+    { id: "legion", label: "Legion Square" },
+    { id: "current", label: "Last Location", typeLoc: "current" },
+    { id: "paleto", label: "Paleto Bay" },
+  ];
+  it("keeps the player's pick if the character offers it, else last location, else the first entry", () => {
+    expect(defaultArrivalId(list, "paleto")).toBe("paleto");
+    expect(defaultArrivalId(list, "missing")).toBe("current");
+    expect(defaultArrivalId(list, null)).toBe("current");
+    expect(defaultArrivalId([{ id: "legion", label: "Legion Square" }], "x")).toBe("legion");
+    expect(defaultArrivalId([], "x")).toBeNull();
+  });
+  it("accepts only well-formed rows from Lua and strips everything else", () => {
+    expect(parseArrivalList({ locations: [
+      { id: "legion", label: "Legion Square", description: "Centre", typeLoc: "normal", coords: { x: 1 } },
+      { id: "", label: "No id" }, { label: "No id either" }, { id: "x" }, null, 7,
+      { id: "house:1", label: "Home", description: 5 },
+    ] })).toEqual([
+      { id: "legion", label: "Legion Square", description: "Centre", typeLoc: "normal" },
+      { id: "house:1", label: "Home", description: undefined, typeLoc: undefined },
+    ]);
+    expect(parseArrivalList(null)).toEqual([]);
+    expect(parseArrivalList({ locations: "nope" })).toEqual([]);
   });
 });
