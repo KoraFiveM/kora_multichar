@@ -454,11 +454,11 @@ H.test('the arrival asks the server to show the effect to nearby players, sendin
     local _, q = arrive()
     H.equal(#q.serverEvents, 1, 'one request')
     local request = q.serverEvents[1]
-    H.equal(request.name, 'qbmultichar:server:arrivalEffect', 'the relay event')
+    H.equal(request.name, 'kora_multichar:server:arrivalEffect', 'the relay event')
     H.equal(#request.args, 3, 'position only, no asset, effect or scale for the server to trust')
     H.close(request.args[1], 195.0, 0.001, 'x where the effect played')
     H.close(request.args[3], q.effects[1].coords.z, 0.001, 'z where the effect played')
-    H.truthy(index(q.log, 'ptfx:scr_alien_teleport') < index(q.log, 'server:qbmultichar:server:arrivalEffect'),
+    H.truthy(index(q.log, 'ptfx:scr_alien_teleport') < index(q.log, 'server:kora_multichar:server:arrivalEffect'),
         'the player sees their own effect first; the request follows')
 end)
 

@@ -624,7 +624,7 @@ describe('branding, theme and nationality', () => {
     cleanup();
     openCreateWith({ brandName: 'Aurora' });
     expect(document.querySelector('.brand-mark')!.textContent).toBe('Aurora');
-    expect(document.body.textContent).not.toMatch(/qbcore/i);
+    expect(document.body.textContent).not.toMatch(/kora_core/i);
   });
 
   it('hides the NEW badge on the free slot unless the flag is on', () => {

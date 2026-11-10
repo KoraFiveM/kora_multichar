@@ -138,7 +138,7 @@ end
 ---Starts the arrival flight for a logged-in character.
 ---@param location table
 local function beginArrival(location)
-    local entered, err = Kora.callback.trigger('qbmultichar:server:enterMode', 'spawn')
+    local entered, err = Kora.callback.trigger('kora_multichar:server:enterMode', 'spawn')
     if not entered then
         -- No session to move out of: just spawn them rather than strand them.
         send('multichar:error', err or 'Could not start the arrival flight.')
@@ -240,7 +240,7 @@ RegisterNetEvent('qb-spawn:client:setupSpawns', function(cData, new, apps)
 end)
 
 openSpawnSelection = function(isNew)
-    local entered, err = Kora.callback.trigger('qbmultichar:server:enterMode', 'spawn')
+    local entered, err = Kora.callback.trigger('kora_multichar:server:enterMode', 'spawn')
     if not entered then
         send('multichar:error', err or 'Could not open spawn selection.')
         return

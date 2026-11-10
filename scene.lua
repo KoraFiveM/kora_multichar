@@ -1122,7 +1122,7 @@ end
 ---load the effect never blocks the arrival.
 ---
 ---The arriving player sees it locally and, with `config.synced`, asks the
----server to show it to players nearby (qbmultichar:server:arrivalEffect). The
+---server to show it to players nearby (kora_multichar:server:arrivalEffect). The
 ---request carries only the position: the server decides what is played.
 ---@param config table Config.arrival.ptfx
 ---@param coords table
@@ -1133,7 +1133,7 @@ local function playArrivalEffect(config, coords)
     local x, y, z = coords.x, coords.y, coords.z + (tonumber(config.zOffset) or 0.0)
     startEffect(config.asset, config.effect, tonumber(config.scale) or 1.0, x, y, z,
         tonumber(config.releaseAfterMs) or 4000)
-    if config.synced ~= false then TriggerServerEvent('qbmultichar:server:arrivalEffect', x, y, z) end
+    if config.synced ~= false then TriggerServerEvent('kora_multichar:server:arrivalEffect', x, y, z) end
 end
 
 ---Plays another player's arrival effect on this client. Everything is checked

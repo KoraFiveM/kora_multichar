@@ -9,7 +9,7 @@ _G.vector3 = function(x, y, z) return vector(x, y, z) end
 _G.vector4 = function(x, y, z, w) return vector(x, y, z, w) end
 
 local callbacks, handlers, exported, clientEvents = {}, {}, {}, {}
-local buckets, states = { [7] = 42 }, { [7] = { ['qbcore:loggedIn'] = false } }
+local buckets, states = { [7] = 42 }, { [7] = { ['kora_core:loggedIn'] = false } }
 local invokingResource = nil
 
 _G.GetCurrentResourceName = function() return 'kora_multichar' end
@@ -28,16 +28,16 @@ _G.AddEventHandler = function(name, callback) handlers[name] = handlers[name] or
 
 local bucketNotices = {}
 _G.TriggerEvent = function(name, src)
-    if name == 'qbvoice:server:bucketChanged' then
+    if name == 'kora_voice:server:bucketChanged' then
         bucketNotices[#bucketNotices + 1] = { src = src, bucket = buckets[src] }
     end
 end
 local loggedOut = {}
 local exportTable = {
-    kora_core = { setPlayerBucket = function(_, src, bucket) buckets[src] = bucket; TriggerEvent('qbvoice:server:bucketChanged', src); return true end,
+    kora_core = { setPlayerBucket = function(_, src, bucket) buckets[src] = bucket; TriggerEvent('kora_voice:server:bucketChanged', src); return true end,
         logout = function(_, src)
-            if not states[src] or states[src]['qbcore:loggedIn'] ~= true then return false end
-            states[src]['qbcore:loggedIn'] = false
+            if not states[src] or states[src]['kora_core:loggedIn'] ~= true then return false end
+            states[src]['kora_core:loggedIn'] = false
             loggedOut[#loggedOut + 1] = src
             return true
         end,
@@ -97,40 +97,40 @@ dofile(root .. 'scenes.lua')
 dofile(root .. 'server.lua')
 
 H.test('selection and spawn modes preserve the original bucket until final cleanup', function()
-    local ok = callbacks['qbmultichar:server:enterMode'](7, 'selection')
+    local ok = callbacks['kora_multichar:server:enterMode'](7, 'selection')
     H.truthy(ok, 'selection mode should open before login')
     H.equal(buckets[7], Config.buckets.selectionBase + 7, 'selection isolation bucket')
-    H.equal(states[7]['qbmultichar:mode'], 'selection', 'selection state')
+    H.equal(states[7]['kora_multichar:mode'], 'selection', 'selection state')
 
-    states[7]['qbcore:loggedIn'] = true
-    ok = callbacks['qbmultichar:server:enterMode'](7, 'spawn')
+    states[7]['kora_core:loggedIn'] = true
+    ok = callbacks['kora_multichar:server:enterMode'](7, 'spawn')
     H.truthy(ok, 'spawn should be a valid transition after login')
-    H.equal(states[7]['qbmultichar:mode'], 'spawn', 'spawn state')
+    H.equal(states[7]['kora_multichar:mode'], 'spawn', 'spawn state')
     H.equal(buckets[7], Config.buckets.selectionBase + 7, 'spawn retains isolated selection bucket')
 
-    callbacks['qbmultichar:server:leaveMode'](7)
+    callbacks['kora_multichar:server:leaveMode'](7)
     H.equal(buckets[7], 42, 'cleanup restores pre-session bucket')
-    H.equal(states[7]['qbmultichar:mode'], false, 'cleanup publishes an explicit cleared mode -- a nil deletion would not replicate to the client')
+    H.equal(states[7]['kora_multichar:mode'], false, 'cleanup publishes an explicit cleared mode -- a nil deletion would not replicate to the client')
 end)
 
 H.test('creator command uses its own bucket and resource stop restores it', function()
-    states[7]['qbcore:loggedIn'] = true
+    states[7]['kora_core:loggedIn'] = true
     heldLevel[7] = 'admin'
     H.truthy(runCommand(Config.creator.command, 7), 'an admin should reach the studio command')
     H.equal(buckets[7], Config.buckets.creatorBase + 7, 'creator isolation bucket')
-    H.equal(states[7]['qbmultichar:mode'], 'creator', 'creator state')
-    H.equal(clientEvents[#clientEvents].name, 'qbmultichar:client:openCreator', 'protected command opens client studio')
+    H.equal(states[7]['kora_multichar:mode'], 'creator', 'creator state')
+    H.equal(clientEvents[#clientEvents].name, 'kora_multichar:client:openCreator', 'protected command opens client studio')
 
     for _, handler in ipairs(handlers.onResourceStop) do handler('kora_multichar') end
     H.equal(buckets[7], 42, 'resource stop restores original bucket')
-    H.equal(states[7]['qbmultichar:mode'], false, 'resource stop publishes an explicit cleared mode')
+    H.equal(states[7]['kora_multichar:mode'], false, 'resource stop publishes an explicit cleared mode')
 end)
 
 H.test('runtime scene ownership prevents cross-resource removal and stop sweeps owned scenes', function()
     invokingResource = 'taxi_resource'
     local ok, err = exported.RegisterScene('taxi_depot', Config.scenes.civilian)
     H.truthy(ok, err)
-    local catalog = callbacks['qbmultichar:server:getScenes']()
+    local catalog = callbacks['kora_multichar:server:getScenes']()
     H.truthy(catalog.taxi_depot, 'registered scene should be visible')
 
     invokingResource = 'other_resource'
@@ -139,9 +139,9 @@ H.test('runtime scene ownership prevents cross-resource removal and stop sweeps 
 
     invokingResource = nil
     for _, handler in ipairs(handlers.onResourceStop) do handler('taxi_resource') end
-    catalog = callbacks['qbmultichar:server:getScenes']()
+    catalog = callbacks['kora_multichar:server:getScenes']()
     H.falsy(catalog.taxi_depot, 'owner resource stop removes its scene')
-    H.equal(clientEvents[#clientEvents].name, 'qbmultichar:client:sceneRemove', 'removal is broadcast')
+    H.equal(clientEvents[#clientEvents].name, 'kora_multichar:client:sceneRemove', 'removal is broadcast')
 end)
 
 H.test('staff commands are gated through kora_lib permission levels, not a local rank table', function()
@@ -150,42 +150,42 @@ H.test('staff commands are gated through kora_lib permission levels, not a local
     heldLevel[7] = 'mod'
     H.falsy(runCommand(Config.logout.command, 7), 'a mod is below the configured admin requirement')
     heldLevel[7] = 'god'
-    states[7]['qbcore:loggedIn'] = true
+    states[7]['kora_core:loggedIn'] = true
     H.truthy(runCommand(Config.logout.command, 7), 'a god cascades past the admin requirement')
 
     local call = permissionCalls[#permissionCalls]
     H.equal(call.required, Config.logout.minimumPermission, 'the configured level is what gets checked')
     H.equal(call.levels[1], 'god', 'levels must be ordered most-privileged first')
-    H.equal(call.options.prefix, 'qbcore', "staff levels resolve under qbcore's ace namespace")
+    H.equal(call.options.prefix, 'kora_core', "staff levels resolve under kora_core's ace namespace")
 end)
 
-H.test('logout hands the drop to qbcore and never pushes character select itself', function()
+H.test('logout hands the drop to kora_core and never pushes character select itself', function()
     heldLevel[7] = 'admin'
-    states[7]['qbcore:loggedIn'] = true
+    states[7]['kora_core:loggedIn'] = true
     loggedOut = {}
     local eventsBefore = #clientEvents
 
     H.truthy(runCommand(Config.logout.command, 7))
-    H.equal(loggedOut[1], 7, 'the command must call qbcore logout')
-    H.equal(states[7]['qbcore:loggedIn'], false, 'the replicated login state is what the client follows')
+    H.equal(loggedOut[1], 7, 'the command must call kora_core logout')
+    H.equal(states[7]['kora_core:loggedIn'], false, 'the replicated login state is what the client follows')
     H.equal(#clientEvents, eventsBefore, 'no client event: the login state bag is the only transport')
 end)
 
 H.test('logout refuses without a character and during a cinematic session', function()
     heldLevel[7] = 'admin'
-    states[7]['qbcore:loggedIn'] = false
+    states[7]['kora_core:loggedIn'] = false
     loggedOut = {}
     H.truthy(runCommand(Config.logout.command, 7), 'permission passes; the handler itself refuses')
     H.equal(#loggedOut, 0, 'a player with no character is never logged out')
 
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'), 'selection opens before login')
-    states[7]['qbcore:loggedIn'] = true
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'spawn'), 'spawn follows the login')
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'selection'), 'selection opens before login')
+    states[7]['kora_core:loggedIn'] = true
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'spawn'), 'spawn follows the login')
     H.truthy(runCommand(Config.logout.command, 7))
     H.equal(#loggedOut, 0, 'a character cannot be dropped out from under the spawn carousel')
     H.equal(notifications[#notifications].payload.type, 'error', 'the refusal is reported to the player')
 
-    callbacks['qbmultichar:server:leaveMode'](7)
+    callbacks['kora_multichar:server:leaveMode'](7)
     H.truthy(runCommand(Config.logout.command, 7))
     H.equal(loggedOut[1], 7, 'logout works again once the session is cleaned up')
 end)
@@ -194,14 +194,14 @@ H.test('bucket notification covers the core and disabled-compat fallback exactly
     local compatSetter = exportTable.kora_core.setPlayerBucket
     for _, available in ipairs({ true, false }) do
         exportTable.kora_core.setPlayerBucket = available and compatSetter or function() error('compat disabled') end
-        states[7]['qbcore:loggedIn'] = false
+        states[7]['kora_core:loggedIn'] = false
         bucketNotices = {}
-        H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+        H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'selection'))
         H.equal(#bucketNotices, 1)
         H.equal(bucketNotices[1].src, 7)
         H.equal(bucketNotices[1].bucket, Config.buckets.selectionBase + 7, 'native changes before notification')
         bucketNotices = {}
-        H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
+        H.truthy(callbacks['kora_multichar:server:leaveMode'](7))
         H.equal(#bucketNotices, 1)
         H.equal(bucketNotices[1].src, 7)
         H.equal(bucketNotices[1].bucket, 42, 'restore notifies after native')
@@ -211,59 +211,59 @@ end)
 
 H.test('isolation buckets have population disabled, selection and creator alike', function()
     populationCalls = {}
-    states[7]['qbcore:loggedIn'] = false
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+    states[7]['kora_core:loggedIn'] = false
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'selection'))
     H.equal(#populationCalls, 1, 'population is set once on entry')
     H.equal(populationCalls[1].bucket, Config.buckets.selectionBase + 7, 'selection bucket')
     H.equal(populationCalls[1].enabled, false, 'population disabled in the selection bucket')
-    H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
+    H.truthy(callbacks['kora_multichar:server:leaveMode'](7))
 
-    states[7]['qbcore:loggedIn'] = true
+    states[7]['kora_core:loggedIn'] = true
     populationCalls = {}
     heldLevel[7] = 'admin'
     H.truthy(runCommand(Config.creator.command, 7), 'studio opens')
     H.equal(populationCalls[1].bucket, Config.buckets.creatorBase + 7, 'creator bucket')
     H.equal(populationCalls[1].enabled, false, 'population disabled in the creator bucket')
-    callbacks['qbmultichar:server:leaveMode'](7)
+    callbacks['kora_multichar:server:leaveMode'](7)
     H.equal(buckets[7], 42, 'studio restores the previous bucket')
 end)
 
 H.test('selection to spawn keeps one bucket and restore happens once at spawn', function()
-    states[7]['qbcore:loggedIn'] = false
+    states[7]['kora_core:loggedIn'] = false
     populationCalls = {}
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
-    states[7]['qbcore:loggedIn'] = true
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'spawn'))
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'selection'))
+    states[7]['kora_core:loggedIn'] = true
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'spawn'))
     H.equal(buckets[7], Config.buckets.selectionBase + 7, 'spawn carousel stays isolated')
     H.equal(#populationCalls, 1, 'spawn does not re-isolate')
-    H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
+    H.truthy(callbacks['kora_multichar:server:leaveMode'](7))
     H.equal(buckets[7], 42, 'previous bucket restored when the player spawns into the world')
-    H.equal(states[7]['qbmultichar:mode'], false, 'mode cleared')
+    H.equal(states[7]['kora_multichar:mode'], false, 'mode cleared')
 end)
 
 H.test('disablePopulation = false re-enables population on the bucket', function()
     Config.buckets.disablePopulation = false
-    states[7]['qbcore:loggedIn'] = false
+    states[7]['kora_core:loggedIn'] = false
     populationCalls = {}
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'selection'))
     H.equal(populationCalls[1].enabled, true, 'a stale disabled bucket follows the current setting')
     H.equal(buckets[7], Config.buckets.selectionBase + 7, 'still isolated')
-    callbacks['qbmultichar:server:leaveMode'](7)
+    callbacks['kora_multichar:server:leaveMode'](7)
     Config.buckets.disablePopulation = true
 end)
 
 H.test('enabled = false never moves the player or touches population', function()
     Config.buckets.enabled = false
-    states[7]['qbcore:loggedIn'] = false
+    states[7]['kora_core:loggedIn'] = false
     populationCalls = {}
     bucketNotices = {}
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'), 'the session itself still works')
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'selection'), 'the session itself still works')
     H.equal(buckets[7], 42, 'bucket untouched on entry')
-    H.equal(states[7]['qbmultichar:mode'], 'selection', 'mode state still published')
-    states[7]['qbcore:loggedIn'] = true
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'spawn'))
+    H.equal(states[7]['kora_multichar:mode'], 'selection', 'mode state still published')
+    states[7]['kora_core:loggedIn'] = true
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'spawn'))
     buckets[7] = 99
-    H.truthy(callbacks['qbmultichar:server:leaveMode'](7))
+    H.truthy(callbacks['kora_multichar:server:leaveMode'](7))
     H.equal(buckets[7], 99, 'leave does not restore a bucket it never changed')
     H.equal(#populationCalls, 0, 'no population writes')
     H.equal(#bucketNotices, 0, 'no bucket notifications')
@@ -272,14 +272,14 @@ H.test('enabled = false never moves the player or touches population', function(
 end)
 
 H.test('cleanup on resource stop restores isolated players', function()
-    states[7]['qbcore:loggedIn'] = false
-    H.truthy(callbacks['qbmultichar:server:enterMode'](7, 'selection'))
+    states[7]['kora_core:loggedIn'] = false
+    H.truthy(callbacks['kora_multichar:server:enterMode'](7, 'selection'))
     for _, handler in ipairs(handlers['onResourceStop']) do handler('kora_multichar') end
     H.equal(buckets[7], 42, 'resource stop restores the previous bucket')
 end)
 
 H.test('nationality is validated against Config.nationalities', function()
-    local validate = callbacks['qbmultichar:server:validateNationality']
+    local validate = callbacks['kora_multichar:server:validateNationality']
     local list, free = Config.nationalities, Config.allowFreeTextNationality
     H.truthy(#list > 0 and list[1] ~= '', 'a default list ships')
     local ok, value = validate(7, '  ' .. list[1] .. ' ')
@@ -304,8 +304,8 @@ H.test('closeNUI forwards to the caller and is refused during a cinematic sessio
     H.equal(clientEvents[1].name, 'qb-multicharacter:client:closeNUI', 'event name')
     H.equal(clientEvents[1].target, 31, 'only the caller is targeted')
 
-    states[32] = { ['qbcore:loggedIn'] = false }
-    callbacks['qbmultichar:server:enterMode'](32, 'selection')
+    states[32] = { ['kora_core:loggedIn'] = false }
+    callbacks['kora_multichar:server:enterMode'](32, 'selection')
     clientEvents = {}
     runCommand('closeNUI', 32)
     H.equal(#clientEvents, 0, 'closeNUI must not tear down an active session')
@@ -324,10 +324,10 @@ end)
 local function relay(src, ...)
     _G.source = src
     clientEvents = {}
-    netEvents['qbmultichar:server:arrivalEffect'](...)
+    netEvents['kora_multichar:server:arrivalEffect'](...)
     local sent = {}
     for _, event in ipairs(clientEvents) do
-        if event.name == 'qbmultichar:client:arrivalEffect' then sent[#sent + 1] = event end
+        if event.name == 'kora_multichar:client:arrivalEffect' then sent[#sent + 1] = event end
     end
     return sent
 end
@@ -340,7 +340,7 @@ local function arrivalScene()
     }
     players = { 21, 22, 23, 24, 25 }
     buckets[21], buckets[22], buckets[23], buckets[24], buckets[25] = 0, 0, 0, 5, 0
-    states[21] = { ['qbcore:loggedIn'] = true }
+    states[21] = { ['kora_core:loggedIn'] = true }
     Config.arrival.ptfx.enabled, Config.arrival.ptfx.synced, Config.arrival.ptfx.syncRadius = true, true, 150.0
 end
 
@@ -386,7 +386,7 @@ end)
 
 H.test('requests from a player who is not logged in, or without a ped, are ignored', function()
     arrivalScene()
-    states[21]['qbcore:loggedIn'] = false
+    states[21]['kora_core:loggedIn'] = false
     H.equal(#relay(21, 100.0, 200.0, 29.0), 0, 'not logged in')
     arrivalScene()
     pedAt[21] = nil

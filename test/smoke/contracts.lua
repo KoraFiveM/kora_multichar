@@ -15,9 +15,9 @@ end
 local server, runtime, client, spawn, creator = read('server.lua'), read('scene.lua'), read('client.lua'), read('spawn.lua'), read('creator.lua')
 
 H.test('server owns private buckets and the replicated cinematic mode', function()
-    H.truthy(server:find("Player(src).state:set('qbmultichar:mode'", 1, true), 'server must publish qbmultichar:mode')
+    H.truthy(server:find("Player(src).state:set('kora_multichar:mode'", 1, true), 'server must publish kora_multichar:mode')
     H.truthy(server:find("mode == 'creator' and Config.buckets.creatorBase or Config.buckets.selectionBase", 1, true), 'mode must select configured bucket base')
-    H.truthy(server:find("exports.kora_core:setPlayerBucket", 1, true), 'bucket changes should use qbcore compatibility')
+    H.truthy(server:find("exports.kora_core:setPlayerBucket", 1, true), 'bucket changes should use kora_core compatibility')
     H.truthy(server:find('session.previousBucket', 1, true), 'cleanup must restore the original bucket')
 end)
 
@@ -58,13 +58,13 @@ end)
 H.test('staff logout is permission-gated and travels on the replicated login state', function()
     H.truthy(server:find('Kora.permissions.hasLevel', 1, true), 'staff gating must go through kora_lib, not a local rank table')
     H.falsy(server:find('exports.kora_core:getPermission', 1, true),
-        "the hand-rolled rank table over qbcore's getPermission is gone")
+        "the hand-rolled rank table over kora_core's getPermission is gone")
     H.falsy(server:find('local ranks = {', 1, true), 'rank ordering belongs to kora_lib')
     H.truthy(server:find('Config.logout.minimumPermission', 1, true), 'the logout level must stay configurable')
-    H.truthy(server:find('exports.kora_core:logout(src)', 1, true), 'the character drop belongs to qbcore')
+    H.truthy(server:find('exports.kora_core:logout(src)', 1, true), 'the character drop belongs to kora_core')
     H.falsy(server:find("TriggerClientEvent('qb-multicharacter:client:chooseChar'", 1, true),
-        'logout must not push character select; the client follows qbcore:loggedIn')
-    H.truthy(client:find("AddStateBagChangeHandler('qbcore:loggedIn'", 1, true),
+        'logout must not push character select; the client follows kora_core:loggedIn')
+    H.truthy(client:find("AddStateBagChangeHandler('kora_core:loggedIn'", 1, true),
         'the client returns to selection by following the replicated login state')
     H.truthy(client:find("Kora.cache.onChange('serverId', try)", 1, true)
         and client:find('if done or not serverId or serverId == -1 then return end', 1, true),
@@ -92,7 +92,7 @@ H.test('spawn exit is mandatory and every success uses the central finalizer', f
 end)
 
 H.test('spawn completion is announced as an event, after the fade-in', function()
-    H.truthy(client:find("TriggerEvent('qbmultichar:client:spawnComplete'", 1, true), 'the finalizer must announce spawn completion')
+    H.truthy(client:find("TriggerEvent('kora_multichar:client:spawnComplete'", 1, true), 'the finalizer must announce spawn completion')
     H.truthy(client:find('while not IsScreenFadedIn() and GetGameTimer() < deadline do', 1, true),
         'the announcement must wait for the fade-in to actually complete, and be bounded')
     H.truthy(client:find('local isNew = pendingNewCharacter', 1, true),

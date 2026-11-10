@@ -152,7 +152,7 @@ _G.multicharSetClientMode = function() end
 local finished = {}
 _G.multicharFinishSpawn = function(coords, isNew) finished[#finished + 1] = { coords = coords, isNew = isNew } end
 Kora.callback.trigger = function(name)
-    if name == 'qbmultichar:server:enterMode' then return true end
+    if name == 'kora_multichar:server:enterMode' then return true end
     return ownedHouses
 end
 dofile(root .. 'spawn.lua')

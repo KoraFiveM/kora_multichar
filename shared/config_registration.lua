@@ -12,7 +12,7 @@ Config.defaultScene = Kora.config.enum(Config.defaultScene, {
 })
 Config.scenes = Kora.config.map(Config.scenes, Kora.config.object({}), {
     label = 'Character-selection scenes',
-    description = 'Maps each stable scene ID to its authored character position, camera path, environment, labels, and presentation settings. Job and gang scene selectors refer to these IDs; keep the selected default scene present and restart qbmultichar after editing scene definitions.',
+    description = 'Maps each stable scene ID to its authored character position, camera path, environment, labels, and presentation settings. Job and gang scene selectors refer to these IDs; keep the selected default scene present and restart kora_multichar after editing scene definitions.',
     requiredKeys = { defaultScene },
 })
 Config.previewWatchdogMs = Kora.config.number(Config.previewWatchdogMs, {

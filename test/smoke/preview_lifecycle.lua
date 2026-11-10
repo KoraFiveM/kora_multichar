@@ -87,15 +87,15 @@ local function host(withClient)
         q.characters={{citizenid='A',cid=1,charinfo={gender=0},job={name='police'}},
             {citizenid='B',cid=2,charinfo={gender=1},job={name='police'}}}
         e.Kora.callback.trigger=function(name, citizenid)
-            if name=='qbmultichar:server:enterMode' then
+            if name=='kora_multichar:server:enterMode' then
                 if q.pauseEnter then q.pauseEnter=false; coroutine.yield('enter') end; return true
             end
-            if name=='qbmultichar:server:leaveMode' then
+            if name=='kora_multichar:server:leaveMode' then
                 if q.pauseLeave then q.pauseLeave=false; coroutine.yield('leave') end; return true
             end
             if name=='qb-multicharacter:server:setupCharacters' then return q.characters end
             if name=='qb-multicharacter:server:GetNumberOfCharacters' then return 5 end
-            if name=='qbmultichar:server:getScenes' then
+            if name=='kora_multichar:server:getScenes' then
                 local result=q.catalog
                 if q.pauseCatalog then q.pauseCatalog=false; coroutine.yield('catalog') end
                 return result

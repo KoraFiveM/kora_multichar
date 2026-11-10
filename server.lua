@@ -6,14 +6,14 @@ local function setBucket(src, bucket)
     local ok = pcall(function() exports.kora_core:setPlayerBucket(src, bucket) end)
     if not ok then
         SetPlayerRoutingBucket(src, bucket)
-        TriggerEvent('qbvoice:server:bucketChanged', src)
+        TriggerEvent('kora_voice:server:bucketChanged', src)
     end
 end
 
 local NO_MODE = false
 
 local function writeMode(src, mode)
-    Player(src).state:set('qbmultichar:mode', mode or NO_MODE, true)
+    Player(src).state:set('kora_multichar:mode', mode or NO_MODE, true)
 end
 
 local function bucketFor(src, mode)
@@ -68,7 +68,7 @@ local function registerScene(owner, id, definition, broadcast)
     local normalized, err = SceneSchema.validate(id, definition, Config.sceneLimits)
     if not normalized then return false, err end
     scenes[id], sceneOwners[id] = normalized, owner
-    if broadcast then TriggerClientEvent('qbmultichar:client:sceneUpsert', -1, id, normalized) end
+    if broadcast then TriggerClientEvent('kora_multichar:client:sceneUpsert', -1, id, normalized) end
     return true
 end
 
@@ -76,7 +76,7 @@ local function unregisterScene(owner, id, broadcast)
     if not scenes[id] then return false, 'unknown scene' end
     if sceneOwners[id] ~= owner then return false, 'scene is owned by another resource' end
     scenes[id], sceneOwners[id] = nil, nil
-    if broadcast then TriggerClientEvent('qbmultichar:client:sceneRemove', -1, id) end
+    if broadcast then TriggerClientEvent('kora_multichar:client:sceneRemove', -1, id) end
     return true
 end
 
@@ -86,7 +86,7 @@ table.sort(configuredIds)
 for _, id in ipairs(configuredIds) do
     local definition = Config.scenes[id]
     local ok, err = registerScene(GetCurrentResourceName(), id, definition, false)
-    if not ok then print(('^1[qbmultichar]^7 bundled scene %s rejected: %s'):format(tostring(id), tostring(err))) end
+    if not ok then print(('^1[kora_multichar]^7 bundled scene %s rejected: %s'):format(tostring(id), tostring(err))) end
 end
 
 exports('RegisterScene', function(id, definition)
@@ -97,19 +97,19 @@ exports('UnregisterScene', function(id)
     return unregisterScene(GetInvokingResource() or GetCurrentResourceName(), id, true)
 end)
 
-Kora.callback.register('qbmultichar:server:getScenes', function()
+Kora.callback.register('kora_multichar:server:getScenes', function()
     return SceneSchema.clone(scenes)
 end)
 
-Kora.callback.register('qbmultichar:server:enterMode', function(src, mode)
-    local loggedIn = Player(src).state['qbcore:loggedIn'] == true
+Kora.callback.register('kora_multichar:server:enterMode', function(src, mode)
+    local loggedIn = Player(src).state['kora_core:loggedIn'] == true
     if mode == 'selection' and loggedIn then return false, 'already logged in' end
     if mode == 'spawn' and (not sessions[src] or not loggedIn) then return false, 'spawn transition is not active' end
     if mode == 'creator' then return false, 'creator mode must be opened by the protected command' end
     return enterMode(src, mode)
 end, { rateLimit = { max = 8, window = 10000 } })
 
-Kora.callback.register('qbmultichar:server:leaveMode', leaveMode, { rateLimit = { max = 8, window = 10000 } })
+Kora.callback.register('kora_multichar:server:leaveMode', leaveMode, { rateLimit = { max = 8, window = 10000 } })
 
 ---Checks a submitted nationality against Config.nationalities. With a list set
 ---and Config.allowFreeTextNationality off the value must be an entry of the
@@ -131,12 +131,12 @@ local function validateNationality(value)
     return true, value
 end
 
-Kora.callback.register('qbmultichar:server:validateNationality', function(_, value)
+Kora.callback.register('kora_multichar:server:validateNationality', function(_, value)
     return validateNationality(value)
 end, { rateLimit = { max = 8, window = 10000 } })
 
 local LEVELS = { 'god', 'admin', 'mod', 'user' }
-local PERMISSION_OPTIONS = { prefix = 'qbcore' }
+local PERMISSION_OPTIONS = { prefix = 'kora_core' }
 
 ---Matches Kora.commands' checkPermission(source, permission) signature.
 ---@param src integer
@@ -148,7 +148,7 @@ end
 
 if Config.creator.enabled then
     Kora.commands.add(Config.creator.command, 'Open the cinematic multicharacter scene studio', nil, false, function(src)
-        if Player(src).state['qbcore:loggedIn'] ~= true then
+        if Player(src).state['kora_core:loggedIn'] ~= true then
             Kora.notify.send(src, { type = 'error', message = 'Load a character before opening the scene studio.' })
             return
         end
@@ -157,7 +157,7 @@ if Config.creator.enabled then
             Kora.notify.send(src, { type = 'error', message = err or 'Could not open the scene studio.' })
             return
         end
-        TriggerClientEvent('qbmultichar:client:openCreator', src, SceneSchema.clone(scenes))
+        TriggerClientEvent('kora_multichar:client:openCreator', src, SceneSchema.clone(scenes))
     end, {
         permission = Config.creator.minimumPermission,
         checkPermission = staffAllowed,
@@ -166,7 +166,7 @@ end
 
 if Config.logout.enabled then
     Kora.commands.add(Config.logout.command, 'Drop your character and return to character select', nil, false, function(src)
-        if Player(src).state['qbcore:loggedIn'] ~= true then
+        if Player(src).state['kora_core:loggedIn'] ~= true then
             Kora.notify.send(src, { type = 'error', message = 'You are not on a character.' })
             return
         end
@@ -208,11 +208,11 @@ local function distance3(ax, ay, az, bx, by, bz)
     return math.sqrt(dx * dx + dy * dy + dz * dz)
 end
 
-RegisterNetEvent('qbmultichar:server:arrivalEffect', function(x, y, z)
+RegisterNetEvent('kora_multichar:server:arrivalEffect', function(x, y, z)
     local src = source
     local config = Config.arrival and Config.arrival.ptfx
     if type(config) ~= 'table' or config.enabled == false or config.synced ~= true then return end
-    if Player(src).state['qbcore:loggedIn'] ~= true then return end
+    if Player(src).state['kora_core:loggedIn'] ~= true then return end
     if not (Kora.util.isFiniteNumber(x) and Kora.util.isFiniteNumber(y) and Kora.util.isFiniteNumber(z)) then return end
 
     local now = GetGameTimer()
@@ -233,7 +233,7 @@ RegisterNetEvent('qbmultichar:server:arrivalEffect', function(x, y, z)
             if targetPed and targetPed ~= 0 then
                 local at = GetEntityCoords(targetPed)
                 if distance3(at.x, at.y, at.z, origin.x, origin.y, origin.z) <= radius then
-                    TriggerClientEvent('qbmultichar:client:arrivalEffect', target,
+                    TriggerClientEvent('kora_multichar:client:arrivalEffect', target,
                         config.asset, config.effect, tonumber(config.scale) or 1.0, x, y, z)
                 end
             end

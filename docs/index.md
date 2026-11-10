@@ -15,8 +15,8 @@ shows each real destination.
 ## Requirements
 
 - [kora_lib](https://qbcore2.github.io/kora_lib/)
-- [qbcore](https://qbcore2.github.io/kora_core/)
-- [qbclothing](https://qbcore2.github.io/kora_clothing/) — optional, but the
+- [kora_core](https://qbcore2.github.io/kora_core/)
+- [kora_clothing](https://qbcore2.github.io/kora_clothing/) — optional, but the
   supported saved-clothing and tattoo provider
 
 ```cfg
@@ -45,7 +45,7 @@ build` from the `web` directory.
   normalizes these again server-side; slot, phone, starting job/gang, and money
   are never client-selected.
 - Nationality is a dropdown of `Config.nationalities`; `Config.defaultNationality`
-  is preselected and the server (`qbmultichar:server:validateNationality`)
+  is preselected and the server (`kora_multichar:server:validateNationality`)
   rejects values outside the list. Set `Config.allowFreeTextNationality = true`
   (or an empty list) for a free-text field. `Config.ui.brandName` (default
   `Kora`) sets the brand text and `Config.ui.showNewSlotBadge` (default off)
@@ -122,21 +122,21 @@ build` from the `web` directory.
   arrives pops its last props in behind the shot, which is a far better answer
   than showing someone a city spawn they did not choose.
 
-The server publishes `LocalPlayer.state['qbmultichar:mode']` as `selection`,
+The server publishes `LocalPlayer.state['kora_multichar:mode']` as `selection`,
 `spawn`, `creator`, or `nil`. kora_hud observes it and stays hidden until the
 cinematic mode is completely cleaned up.
 
 ## Spawn completion
 
 ```lua
-AddEventHandler('qbmultichar:client:spawnComplete', function(isNew) end)
+AddEventHandler('kora_multichar:client:spawnComplete', function(isNew) end)
 ```
 
 A client-local event fired once the player is genuinely in the world: the ped
 has been placed, resurrected, revealed and unfrozen, and the fade-in has
 finished. `isNew` is `true` only for a character that was just created.
 
-Use this, not the cleared `qbmultichar:mode` state bag, to gate anything that
+Use this, not the cleared `kora_multichar:mode` state bag, to gate anything that
 must not run before the player can see themselves. The mode is cleared *before*
 the teleport (the bucket has to be restored first) and its clear replicates
 asynchronously on top of that, so a watcher of the bag can wake mid-teleport.
@@ -315,7 +315,7 @@ Returns `true`, or `false, error`. Ownership is checked server-side.
 `/logout` drops the staff member's character while keeping their connection,
 putting them straight back into character select. It is gated exactly like the
 scene studio: `Config.logout.minimumPermission` (default `admin`), resolved
-server-side through kora_lib's permission gateway, so `qbcore.admin`, the bare
+server-side through kora_lib's permission gateway, so `kora_core.admin`, the bare
 `group.admin` ace, and any Discord roles a server maps all satisfy it, and a
 `god` cascades past an `admin` requirement.
 
@@ -332,7 +332,7 @@ open — those own the routing bucket and camera, and dropping the character
 under them would strand the client in a scene it cannot leave.
 
 The command itself only calls kora_core's logout. Returning to character select
-is driven by the replicated `qbcore:loggedIn` state that logout clears, not by
+is driven by the replicated `kora_core:loggedIn` state that logout clears, not by
 an event this resource sends, so **any** logout path lands back in selection —
 an admin resource calling the core export, or a character delete that logs out
 a live handle, behaves identically to `/logout`.
@@ -395,7 +395,7 @@ the original **Continue** then spawn-carousel flow is used unchanged.
   outfit is applied unseen), waits `Config.arrival.settleMs`, plays the particle
   effect at the ped's feet, fades the ped in over `pedFadeMs` and blends the
   camera back to gameplay over `handbackMs`. HUD and controls stay off until it
-  finishes, exactly as during select, and `qbmultichar:client:spawnComplete`
+  finishes, exactly as during select, and `kora_multichar:client:spawnComplete`
   fires at the end.
 - The effect is `Config.arrival.ptfx` (`asset`, `effect`, `scale`, `zOffset`,
   `enabled`, `synced`, `syncRadius`). Its asset is requested when the flight
@@ -404,11 +404,11 @@ the original **Continue** then spawn-carousel flow is used unchanged.
   it. Choose the look in game.
 - With `synced = true` (the default) players near the arrival see the effect
   too. The arriving client reports only the position
-  (`qbmultichar:server:arrivalEffect`); the server checks the player is logged
+  (`kora_multichar:server:arrivalEffect`); the server checks the player is logged
   in, that the position is within 25 m of where it knows their ped is, and that
   they have not sent one in the last 5 s, then tells every player in the same
   routing bucket within `syncRadius` metres
-  (`qbmultichar:client:arrivalEffect`) to play the effect named in the server's
+  (`kora_multichar:client:arrivalEffect`) to play the effect named in the server's
   own config. A client can never choose the asset, effect or scale other
   players load. Each receiving client validates the event again and ignores it
   while it is on character select. This is a relay rather than the game's

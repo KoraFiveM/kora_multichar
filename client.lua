@@ -41,19 +41,19 @@ local function bootCall(label, attempt, attempts)
         local ok, value = pcall(attempt)
         if ok and value ~= nil then return value end
         if tries < attempts then
-            print(('^3[qbmultichar]^7 %s did not answer (attempt %d/%d) -- retrying in %dms')
+            print(('^3[kora_multichar]^7 %s did not answer (attempt %d/%d) -- retrying in %dms')
                 :format(label, tries, attempts, BOOT_RETRY_MS))
             Wait(BOOT_RETRY_MS)
         end
     end
-    print(('^1[qbmultichar]^7 %s never answered after %d attempt(s).'):format(label, attempts))
+    print(('^1[kora_multichar]^7 %s never answered after %d attempt(s).'):format(label, attempts))
     return nil
 end
 
 ---@param attempts integer|nil
 local function fetchSceneCatalog(attempts)
     return bootCall('scene catalog fetch', function()
-        local fetched = Kora.callback.trigger('qbmultichar:server:getScenes')
+        local fetched = Kora.callback.trigger('kora_multichar:server:getScenes')
         if type(fetched) ~= 'table' or next(fetched) == nil then return nil end
         return fetched
     end, attempts)
@@ -77,7 +77,7 @@ local function previewCharacter(citizenid)
             return Kora.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
         end)
         if not ok then
-            print(('^3[qbmultichar]^7 skin fetch failed, using default model: %s'):format(tostring(model)))
+            print(('^3[kora_multichar]^7 skin fetch failed, using default model: %s'):format(tostring(model)))
             model, skin = nil, nil
         end
         if generation ~= previewGeneration then return end
@@ -108,7 +108,7 @@ local function previewCharacter(citizenid)
 end
 
 local function leaveServerMode()
-    return Kora.callback.trigger('qbmultichar:server:leaveMode') == true
+    return Kora.callback.trigger('kora_multichar:server:leaveMode') == true
 end
 
 local function closeNuiOnly()
@@ -123,7 +123,7 @@ local function announceSpawnComplete(isNew)
     CreateThread(function()
         local deadline = GetGameTimer() + 5000
         while not IsScreenFadedIn() and GetGameTimer() < deadline do Wait(0) end
-        TriggerEvent('qbmultichar:client:spawnComplete', isNew == true)
+        TriggerEvent('kora_multichar:client:spawnComplete', isNew == true)
     end)
 end
 
@@ -132,7 +132,7 @@ local function resetNewCharacterAppearance()
     if GetResourceState('kora_clothing') ~= 'started' then return end
     local ok, err = pcall(function() return exports.kora_clothing:applyStarterAppearance() end)
     if not ok then
-        print(('^3[qbmultichar]^7 starter outfit could not be applied: %s'):format(tostring(err)))
+        print(('^3[kora_multichar]^7 starter outfit could not be applied: %s'):format(tostring(err)))
     end
 end
 
@@ -216,7 +216,7 @@ function multicharArrive(location, forceNew)
         onStage = function(stage) send('multichar:flight:stage', { stage = stage }) end,
     })
     if not ok then
-        print(('^3[qbmultichar]^7 arrival flight did not complete (%s); using a plain spawn.'):format(tostring(reason)))
+        print(('^3[kora_multichar]^7 arrival flight did not complete (%s); using a plain spawn.'):format(tostring(reason)))
         SceneRuntime.releaseArrivalEffect()
         finishAt(location.coords, isNew)
         return
@@ -247,14 +247,14 @@ local function refreshCharacters()
     previewGeneration = previewGeneration + 1
     local entered, enterErr
     for tries = 1, BOOT_MAX_ATTEMPTS do
-        entered, enterErr = Kora.callback.trigger('qbmultichar:server:enterMode', 'selection')
+        entered, enterErr = Kora.callback.trigger('kora_multichar:server:enterMode', 'selection')
         if entered ~= nil then break end
-        print(('^3[qbmultichar]^7 selection handshake did not answer (attempt %d/%d) -- retrying in %dms')
+        print(('^3[kora_multichar]^7 selection handshake did not answer (attempt %d/%d) -- retrying in %dms')
             :format(tries, BOOT_MAX_ATTEMPTS, BOOT_RETRY_MS))
         Wait(BOOT_RETRY_MS)
     end
     if not entered then
-        print(('^1[qbmultichar]^7 could not enter selection mode: %s')
+        print(('^1[kora_multichar]^7 could not enter selection mode: %s')
             :format(tostring(enterErr or 'the server never answered')))
         return
     end
@@ -332,7 +332,7 @@ RegisterNetEvent('qb-multicharacter:client:closeNUIdefault', function()
             preview = first and first.coords == Config.defaultSpawn and first.preview or nil,
         }
         selectedCharacter = nil
-        local entered = Kora.callback.trigger('qbmultichar:server:enterMode', 'spawn')
+        local entered = Kora.callback.trigger('kora_multichar:server:enterMode', 'spawn')
         if entered then multicharSetClientMode('spawn', true) end
         multicharArrive(location, true)
         return
@@ -345,7 +345,7 @@ RegisterNetEvent('qb-multicharacter:client:spawnLastLocation', function(coords)
 end)
 
 -- Another player has just arrived near here; the server tells us what to play.
-RegisterNetEvent('qbmultichar:client:arrivalEffect', function(asset, effect, scale, x, y, z)
+RegisterNetEvent('kora_multichar:client:arrivalEffect', function(asset, effect, scale, x, y, z)
     if currentMode ~= nil then return end
     SceneRuntime.playSyncedArrivalEffect(asset, effect, scale, x, y, z)
 end)
@@ -355,14 +355,14 @@ RegisterNetEvent('multichar:client:selectFailed', function(err)
     send('multichar:error', err or 'Something went wrong.')
 end)
 
-RegisterNetEvent('qbmultichar:client:sceneUpsert', function(id, definition)
+RegisterNetEvent('kora_multichar:client:sceneUpsert', function(id, definition)
     local scene = SceneSchema.validate(id, definition, Config.sceneLimits)
     if not scene then return end
     sceneCatalog[id] = scene
     if currentMode == 'selection' and selectedCharacter then previewCharacter(selectedCharacter.citizenid) end
 end)
 
-RegisterNetEvent('qbmultichar:client:sceneRemove', function(id)
+RegisterNetEvent('kora_multichar:client:sceneRemove', function(id)
     sceneCatalog[id] = nil
     if currentMode == 'selection' and selectedCharacter then previewCharacter(selectedCharacter.citizenid) end
 end)
@@ -406,7 +406,7 @@ RegisterNUICallback('multichar:create', function(data, cb)
         cb({ ok = false }); return
     end
     data = type(data) == 'table' and data or {}
-    local nationalityOk, nationality = Kora.callback.trigger('qbmultichar:server:validateNationality', data.nationality)
+    local nationalityOk, nationality = Kora.callback.trigger('kora_multichar:server:validateNationality', data.nationality)
     if not nationalityOk then
         send('multichar:error', type(nationality) == 'string' and nationality or 'Choose a valid nationality.')
         cb({ ok = false }); return
@@ -456,7 +456,7 @@ local function awaitStablePlayerPed()
         end
         Wait(0)
     end
-    print('^3[qbmultichar]^7 player ped never settled; opening selection anyway.')
+    print('^3[kora_multichar]^7 player ped never settled; opening selection anyway.')
 end
 
 local function whenServerIdReady(callback)
@@ -481,10 +481,10 @@ end
 CreateThread(function()
     awaitStablePlayerPed()
     whenServerIdReady(function(serverId)
-        AddStateBagChangeHandler('qbcore:loggedIn', ('player:%s'):format(serverId), function(_, _, value)
+        AddStateBagChangeHandler('kora_core:loggedIn', ('player:%s'):format(serverId), function(_, _, value)
             if value == false then CreateThread(returnToCharacterSelect) end
         end)
-        if LocalPlayer.state['qbcore:loggedIn'] == true then return end
+        if LocalPlayer.state['kora_core:loggedIn'] == true then return end
         TriggerEvent('qb-multicharacter:client:chooseChar')
     end)
 end)

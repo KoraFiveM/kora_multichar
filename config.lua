@@ -74,7 +74,7 @@ Config.arrival = {
         scale = 1.0,
         zOffset = 0.0,
         -- true: players near the arrival see the effect too. The server relays
-        -- it (see qbmultichar:server:arrivalEffect) and plays only what is
+        -- it (see kora_multichar:server:arrivalEffect) and plays only what is
         -- configured here, never what a client asks for. false: only the
         -- arriving player sees it.
         synced = true,

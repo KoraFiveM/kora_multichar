@@ -241,7 +241,7 @@ local function closeCreator()
     creator.active = false
     destroyEditorCamera()
     SceneRuntime.endMode()
-    Kora.callback.trigger('qbmultichar:server:leaveMode')
+    Kora.callback.trigger('kora_multichar:server:leaveMode')
     SetNuiFocus(false, false)
     send('multichar:creator:close')
     creator.draft, creator.catalog = nil, {}
@@ -292,7 +292,7 @@ local function moveItem(list, index, delta)
     return true
 end
 
-RegisterNetEvent('qbmultichar:client:openCreator', function(catalog)
+RegisterNetEvent('kora_multichar:client:openCreator', function(catalog)
     if creator.active then return end
     creator.active, creator.catalog, creator.draft = true, catalog or {}, newDraft()
     creator.cursor, creator.camCoords, creator.camRot = true, nil, nil
@@ -301,11 +301,11 @@ RegisterNetEvent('qbmultichar:client:openCreator', function(catalog)
     send('multichar:creator:show', { draft = creator.draft, scenes = creator.catalog, cursor = true, library = Config.creator.library })
 end)
 
-RegisterCommand('qbmultichar_creator_toggle', function()
+RegisterCommand('kora_multichar_creator_toggle', function()
     if creator.active then setCursor(not creator.cursor) end
 end, false)
 creatorToggleBinding = Kora.keybind.add({
-    name = 'qbmultichar_creator_toggle',
+    name = 'kora_multichar_creator_toggle',
     description = 'Scene Studio: Toggle Cursor / Freecam',
     defaultKey = 'TAB',
     onPressed = function() if creator.active then setCursor(not creator.cursor) end end,
@@ -424,11 +424,11 @@ RegisterNUICallback('multichar:creator:action', function(data, cb)
     cb({ ok = true })
 end)
 
-RegisterNetEvent('qbmultichar:client:sceneUpsert', function(id, definition)
+RegisterNetEvent('kora_multichar:client:sceneUpsert', function(id, definition)
     if creator.active then creator.catalog[id] = SceneSchema.clone(definition); updateUi() end
 end)
 
-RegisterNetEvent('qbmultichar:client:sceneRemove', function(id)
+RegisterNetEvent('kora_multichar:client:sceneRemove', function(id)
     if creator.active then creator.catalog[id] = nil; updateUi() end
 end)
 

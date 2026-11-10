@@ -3,11 +3,9 @@ game 'gta5'
 lua54 'yes'
 
 name 'kora_multichar'
--- Keep the legacy resource name resolvable for exports['qbmultichar'] callers.
-provide 'qbmultichar'
 author 'Jamie'
 version '3.0.0'
-description 'Cinematic character selection, live spawn previews, and scene studio for qbcore'
+description 'Cinematic character selection, live spawn previews, and scene studio for kora_core'
 
 dependency 'kora_theme'
 dependency 'kora_lib'
@@ -52,6 +50,8 @@ client_scripts {
     'client.lua',
     'spawn.lua',
     'creator.lua',
+    -- Optional FFT hooks: returns immediately unless fft_kora_hooks is true.
+    'fft_hooks.lua'
 }
 
 -- kora_qa: Gherkin test scenarios (converted legacy tests), see [kora]/kora_qa/README.md
