@@ -26,6 +26,7 @@ ui_page 'web/build/index.html'
 files {
     'web/build/index.html',
     'web/build/**/*',
+    'locales/*.lua',
 }
 
 -- Required to reach kora_lib APIs -- see kora_lib's own AGENTS.md for why this is how

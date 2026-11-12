@@ -291,7 +291,7 @@ local function refreshCharacters()
         },
     })
     if next(sceneCatalog) == nil then
-        send('multichar:error', 'Scenes could not be loaded from the server. Previews will be unavailable.')
+        send('multichar:error', Kora.lang('Notify.scenes_unavailable'))
     end
 end
 
@@ -328,7 +328,7 @@ RegisterNetEvent('qb-multicharacter:client:closeNUIdefault', function()
         -- same flight as everyone else; there is no list to choose from.
         local first = Config.spawns and Config.spawns[1]
         local location = {
-            id = 'first', label = 'First Arrival', coords = Config.defaultSpawn,
+            id = 'first', label = Kora.lang('Spawn.first_arrival'), coords = Config.defaultSpawn,
             preview = first and first.coords == Config.defaultSpawn and first.preview or nil,
         }
         selectedCharacter = nil
@@ -352,7 +352,7 @@ end)
 
 RegisterNetEvent('multichar:client:selectFailed', function(err)
     if multicharPlayFailed then multicharPlayFailed() end
-    send('multichar:error', err or 'Something went wrong.')
+    send('multichar:error', err or Kora.lang('Notify.generic_error'))
 end)
 
 RegisterNetEvent('kora_multichar:client:sceneUpsert', function(id, definition)
@@ -370,7 +370,7 @@ end)
 RegisterNUICallback('multichar:preview', function(data, cb)
     local citizenid = type(data) == 'table' and data.citizenid
     if type(citizenid) ~= 'string' or not charactersById[citizenid] then
-        send('multichar:previewReady', { ok = false, error = 'That character could not be previewed.' })
+        send('multichar:previewReady', { ok = false, error = Kora.lang('Notify.character_preview_failed') })
         cb({ ok = true })
         return
     end
@@ -402,13 +402,13 @@ end)
 
 RegisterNUICallback('multichar:create', function(data, cb)
     if not nextFreeSlot(characters) then
-        send('multichar:error', 'You have reached the maximum number of characters.')
+        send('multichar:error', Kora.lang('Notify.character_limit'))
         cb({ ok = false }); return
     end
     data = type(data) == 'table' and data or {}
     local nationalityOk, nationality = Kora.callback.trigger('kora_multichar:server:validateNationality', data.nationality)
     if not nationalityOk then
-        send('multichar:error', type(nationality) == 'string' and nationality or 'Choose a valid nationality.')
+        send('multichar:error', type(nationality) == 'string' and nationality or Kora.lang('Notify.invalid_nationality'))
         cb({ ok = false }); return
     end
     TriggerServerEvent('qb-multicharacter:server:createCharacter', {
@@ -426,7 +426,7 @@ RegisterNUICallback('multichar:delete', function(data, cb)
     if type(citizenid) ~= 'string' or not charactersById[citizenid] then cb({ ok = false }); return end
     local deleted, err = Kora.callback.trigger('qb-multicharacter:server:deleteCharacter', citizenid)
     if not deleted then
-        send('multichar:error', err or 'Could not delete that character.')
+        send('multichar:error', err or Kora.lang('Notify.character_delete_failed'))
         cb({ ok = false }); return
     end
     refreshCharacters()
