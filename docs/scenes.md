@@ -1,6 +1,6 @@
 ---
 title: Scenes
-sidebar_position: 4
+sidebar_position: 7
 ---
 
 A scene is the staged backdrop for a character preview: an anchor, the character's position, optional local peds, vehicles and props, cameras and a cue timeline.
@@ -73,4 +73,4 @@ Config.scenes.example = {
 
 ## Runtime scenes
 
-Other resources register scenes with [`RegisterScene`](./exports.md). Scenes are owned by the registering resource and are removed when it stops.
+Other resources register scenes with [`RegisterScene`](./api/scene-registry.md). Scenes are owned by the registering resource and are removed when it stops.

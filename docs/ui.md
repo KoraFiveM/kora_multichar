@@ -1,6 +1,6 @@
 ---
 title: UI
-sidebar_position: 9
+sidebar_position: 10
 ---
 
 The NUI is a React/Vite app in `web/`, served from `web/build/index.html`. The resource calls `exports.kora_core:claimUI()` and uses the raw NUI natives for messaging.

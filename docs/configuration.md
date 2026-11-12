@@ -1,6 +1,6 @@
 ---
 title: Configuration
-sidebar_position: 3
+sidebar_position: 6
 ---
 
 All options live in `config.lua`. `shared/config_registration.lua` registers many of them with `Kora.config` so they can be edited through kora's config tooling; options marked "live" there apply the next time character select opens (or the next session or arrival, as noted). Options without a registration (for example `Config.spawns`, `Config.spawnFlight`, `Config.creator`, `Config.logout`) are read from `config.lua` only.

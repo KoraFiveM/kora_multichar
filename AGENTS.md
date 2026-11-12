@@ -4,7 +4,7 @@
 
 ## Documentation
 
-User-facing documentation lives in `docs/` (Markdown, published via the Kora Docusaurus site, kora_docs_next). Read `docs/index.md` first for an overview of features, configuration, commands, exports, events and database usage.
+User-facing documentation lives in `docs/` (Markdown, published via the Kora Docusaurus site, kora_docs_next). The layout is: `index.md` (hub and documentation map), `installation.md`, `how-to-use.md`, `commands.md`, `api/` (`index.md` plus `scene-registry.md` for the `RegisterScene`/`UnregisterScene` exports) and topic pages (`configuration.md`, `scenes.md`, `spawn-and-arrival.md`, `events.md`, `ui.md`, `compatibility.md`, `troubleshooting.md`). Read `docs/index.md` first for an overview of features, configuration, commands, exports, events and database usage.
 
 When you add, change, or remove a feature, config option, command, export, event, item, permission, or database table/column, update the matching page in `docs/` in the same change. Keep docs accurate to the code; do not document behaviour that does not exist.
 

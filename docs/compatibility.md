@@ -1,6 +1,6 @@
 ---
 title: Compatibility
-sidebar_position: 10
+sidebar_position: 11
 ---
 
 The manifest `provide`s `qb-multicharacter` and `qb-spawn`. Do not run the stock resources alongside it.
