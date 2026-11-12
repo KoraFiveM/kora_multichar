@@ -4,7 +4,7 @@ lua54 'yes'
 
 name 'kora_multichar'
 author 'Jamie'
-version '0.1.0'
+version '0.2.0'
 description 'Cinematic character selection, live spawn previews, and scene studio for kora_core'
 
 dependency 'kora_theme'
