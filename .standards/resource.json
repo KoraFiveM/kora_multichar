@@ -1,0 +1,60 @@
+{
+  "resource": "kora_multichar",
+  "standardsRevision": "2026-11-12.2",
+  "realms": {
+    "client": [
+      "client.lua",
+      "creator.lua",
+      "fft_hooks.lua",
+      "scene.lua",
+      "spawn.lua"
+    ],
+    "server": [
+      "server.lua"
+    ],
+    "shared": [
+      "config.lua",
+      "scenes.lua",
+      "shared/config_registration.lua",
+      "shared/scene.lua"
+    ],
+    "manifest": [
+      "fxmanifest.lua"
+    ],
+    "test": [
+      "test/harness.lua",
+      "test/smoke/arrival.lua",
+      "test/smoke/camera_mode.lua",
+      "test/smoke/contracts.lua",
+      "test/smoke/preview_lifecycle.lua",
+      "test/smoke/scene_assets.lua",
+      "test/smoke/scenes.lua",
+      "test/smoke/server.lua",
+      "test/smoke/spawn.lua",
+      "tests/qa.lua"
+    ]
+  },
+  "exclude": [
+    ".git/*",
+    ".github/*",
+    ".standards/*",
+    "node_modules/*",
+    "**/node_modules/*",
+    "vendor/*",
+    "**/vendor/*",
+    "web/*",
+    "ui/*",
+    "html/*",
+    "dist/*",
+    "artifacts/*",
+    "runtime/*",
+    "txData/*",
+    "storage/*",
+    "stream/*",
+    "docs/*",
+    "__pycache__/*",
+    "modules/lookup/data/*"
+  ],
+  "project": "Kora Framework",
+  "copyright": "Copyright © 2026 Kora Framework"
+}
