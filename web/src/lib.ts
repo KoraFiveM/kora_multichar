@@ -11,10 +11,10 @@ export function normalizeCharacters(value: unknown): Character[] {
   return values.every(isCharacter) ? values : [];
 }
 
-export function characterName(character: Character): string {
+export function characterName(character: Character, unnamed = "Unnamed Character", withCid: (cid: number) => string = (cid) => `Character ${cid}`): string {
   const first = character.charinfo?.firstname ?? "";
   const last = character.charinfo?.lastname ?? "";
-  return `${first} ${last}`.trim() || character.name || (character.cid ? `Character ${character.cid}` : "Unnamed Character");
+  return `${first} ${last}`.trim() || character.name || (character.cid ? withCid(character.cid) : unnamed);
 }
 
 export function money(value: unknown): string {
@@ -36,14 +36,14 @@ export function wrapIndex(index: number, delta: number, count: number): number {
 
 export type SlotTarget = { slot: number; label: string; empty: boolean };
 
-export function slotTarget(characters: Character[], canCreate: boolean, index: number, delta: number): SlotTarget | null {
+export function slotTarget(characters: Character[], canCreate: boolean, index: number, delta: number, newCharacterLabel = "Create New Character", unnamed = "Unnamed Character", withCid: (cid: number) => string = (cid) => `Character ${cid}`): SlotTarget | null {
   const count = characters.length + (canCreate ? 1 : 0);
   if (count <= 1) return null;
   const next = wrapIndex(index, delta, count);
   const character = characters[next];
   return character
-    ? { slot: next + 1, label: characterName(character), empty: false }
-    : { slot: next + 1, label: "Create New Character", empty: true };
+    ? { slot: next + 1, label: characterName(character, unnamed, withCid), empty: false }
+    : { slot: next + 1, label: newCharacterLabel, empty: true };
 }
 
 /**
