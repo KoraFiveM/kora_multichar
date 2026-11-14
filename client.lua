@@ -12,6 +12,11 @@ local function send(action, data)
     SendNUIMessage({ action = action, data = data })
 end
 
+RegisterNUICallback('multichar:ready', function(_, cb)
+    cb({})
+    send('multichar:locales', Kora.locale.getResourceLocale())
+end)
+
 local function nextFreeSlot(list)
     local taken = {}
     for _, character in ipairs(list) do taken[character.cid] = true end
