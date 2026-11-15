@@ -11,6 +11,15 @@ local function send(action, data)
     SendNUIMessage({ action = action, data = data })
 end
 
+function multicharSpawnText(phrase)
+    local key = 'Spawn.' .. phrase
+    local translated = Kora.locale.translate('kora_multichar', key)
+    if type(translated) == 'string' and translated ~= key then return translated end
+
+    local english = Kora.require.current('locales/en.lua')
+    return english.Spawn[phrase] or key
+end
+
 local function addLocation(location)
     if not location or not location.id or not location.coords then return end
     spawnLocations[#spawnLocations + 1] = location
@@ -31,14 +40,14 @@ local function buildLocations(cData, houses, isNew, apartments, deferLast)
     local current = isNew and Config.defaultSpawn or (cData and normalizeCoords(cData.position))
     if current and not apartments then
         addLocation({
-            id = 'current', typeLoc = 'current', label = isNew and Kora.lang('Spawn.first_arrival') or Kora.lang('Spawn.last_location'),
-            description = isNew and Kora.lang('Spawn.first_arrival_description') or Kora.lang('Spawn.last_location_description'),
+            id = 'current', typeLoc = 'current', label = isNew and multicharSpawnText('first_arrival') or multicharSpawnText('last_location'),
+            description = isNew and multicharSpawnText('first_arrival_description') or multicharSpawnText('last_location_description'),
             coords = current,
         })
     elseif deferLast and not isNew and not apartments then
         local deferred = {
-            id = 'current', typeLoc = 'current', label = Kora.lang('Spawn.last_location'), deferred = true,
-            description = Kora.lang('Spawn.last_location_description'),
+            id = 'current', typeLoc = 'current', label = multicharSpawnText('last_location'), deferred = true,
+            description = multicharSpawnText('last_location_description'),
         }
         spawnLocations[#spawnLocations + 1] = deferred
         spawnById[deferred.id] = deferred
@@ -57,8 +66,8 @@ local function buildLocations(cData, houses, isNew, apartments, deferLast)
         if coords then
             owned[#owned + 1] = {
                 id = ('house:%s'):format(tostring(house.id or key)), typeLoc = 'house', spawnloc = house.id or key,
-                label = house.label or house.name or Kora.lang('Spawn.owned_property'),
-                description = Kora.lang('Spawn.owned_property_description'), coords = coords,
+                label = house.label or house.name or multicharSpawnText('owned_property'),
+                description = multicharSpawnText('owned_property_description'), coords = coords,
             }
         end
     end
@@ -76,7 +85,7 @@ local function buildLocations(cData, houses, isNew, apartments, deferLast)
         if coords then
             starting[#starting + 1] = {
                 id = ('apartment:%s'):format(name), typeLoc = 'apartment', apartmentType = name,
-                label = apartment.label or name, description = Kora.lang('Spawn.new_apartment_description'), coords = coords,
+                label = apartment.label or name, description = multicharSpawnText('new_apartment_description'), coords = coords,
             }
         end
     end

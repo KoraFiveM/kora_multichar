@@ -12,10 +12,7 @@ local function send(action, data)
     SendNUIMessage({ action = action, data = data })
 end
 
-RegisterNUICallback('multichar:ready', function(_, cb)
-    cb({})
-    send('multichar:locales', Kora.locale.getResourceLocale())
-end)
+
 
 local function nextFreeSlot(list)
     local taken = {}
@@ -333,7 +330,7 @@ RegisterNetEvent('qb-multicharacter:client:closeNUIdefault', function()
         -- same flight as everyone else; there is no list to choose from.
         local first = Config.spawns and Config.spawns[1]
         local location = {
-            id = 'first', label = Kora.lang('Spawn.first_arrival'), coords = Config.defaultSpawn,
+            id = 'first', label = multicharSpawnText('first_arrival'), coords = Config.defaultSpawn,
             preview = first and first.coords == Config.defaultSpawn and first.preview or nil,
         }
         selectedCharacter = nil
@@ -500,3 +497,6 @@ AddEventHandler('onClientResourceStop', function(resource)
     currentMode = nil
     SetNuiFocus(false, false)
 end)
+    Wait(1000)
+    local locales = Kora.locale.getResourceLocale() or Kora.require.current('locales/en.lua')
+    send('multichar:locales', locales)

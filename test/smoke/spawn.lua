@@ -24,7 +24,19 @@ _G.RegisterNUICallback = function() end
 _G.SendNUIMessage = function(payload) nuiMessages[#nuiMessages + 1] = payload end
 local ownedHouses = {}
 _G.GetResourceState = function() return 'missing' end
-_G.Kora = { callback = { trigger = function() return ownedHouses end } }
+local translations = {}
+_G.Kora = {
+    callback = { trigger = function() return ownedHouses end },
+    locale = { translate = function(resource, key)
+        H.equal(resource, 'kora_multichar')
+        return translations[key] or key
+    end },
+    lang = function(key)
+        local group, phrase = key:match('^([^.]+)%.(.+)$')
+        return dofile(root .. 'locales/en.lua')[group][phrase]
+    end,
+    require = { current = function(path) return dofile(root .. path) end },
+}
 dofile(root .. 'spawn.lua')
 
 ---@return table locations, table payload
@@ -60,6 +72,8 @@ H.test('the published list is last location, then Config.spawns in declared orde
     local locations = buildList(vector4(1.0, 2.0, 3.0, 4.0))
 
     H.equal(locations[1].id, 'current', 'last location leads the list')
+    H.equal(locations[1].label, 'Last Location')
+    H.equal(locations[1].description, 'Return to the exact place this character was last seen.')
     for index, entry in ipairs(Config.spawns) do
         H.equal(locations[index + 1].id, entry.id, ('configured entry %d keeps its declared position'):format(index))
         H.equal(locations[index + 1].typeLoc, 'normal', 'configured entries stay normal spawns')
@@ -156,6 +170,18 @@ Kora.callback.trigger = function(name)
     return ownedHouses
 end
 dofile(root .. 'spawn.lua')
+
+H.test('one-screen arrivals publish the translated label and English fallback description', function()
+    _G.multicharHasCharacter = function() return true end
+    translations['Spawn.last_location'] = 'Dernière position'
+    local result
+    nuiCallbacks['multichar:spawn:list']({ citizenid = 'ABC12345' }, function(payload) result = payload end)
+    translations['Spawn.last_location'] = nil
+
+    H.truthy(result.ok)
+    H.equal(result.locations[1].label, 'Dernière position')
+    H.equal(result.locations[1].description, 'Return to the exact place this character was last seen.')
+end)
 
 local apps = {
     apartment01 = { name = 'apartment01', label = 'South Rockford Plaza', coords = { enter = vector4(1.0, 2.0, 3.0, 4.0) } },

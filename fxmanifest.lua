@@ -24,6 +24,8 @@ ui_page 'web/build/index.html'
 -- A bare trailing '**' does NOT match files in FiveM's resource globber --
 -- needs the explicit '/*' (see kora_lib/fxmanifest.lua's comment on the same issue).
 files {
+    'locales/*.lua',
+    'locales/*.json',
     'web/build/index.html',
     'web/build/**/*',
 }

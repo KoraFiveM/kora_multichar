@@ -46,6 +46,8 @@ Legacy events are listed in [Compatibility](./compatibility.md).
 
 ## NUI callbacks
 
+The UI calls `multichar:ready` once its message listener is registered. The resource sends the selected locale table, with English as the fallback when that language has no table.
+
 Internal to the bundled UI: `multichar:preview`, `multichar:createPreview`, `multichar:select`, `multichar:create`, `multichar:delete`, `multichar:disconnect`, `multichar:spawn:list`, `multichar:play`, `multichar:spawn:focus`, `multichar:spawn:choose`, `multichar:spawn:exit` and `multichar:creator:action`. Do not call them from other resources.
 
 ## FFT hooks
