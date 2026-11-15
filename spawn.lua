@@ -11,6 +11,15 @@ local function send(action, data)
     SendNUIMessage({ action = action, data = data })
 end
 
+function multicharSpawnText(phrase)
+    local key = 'Spawn.' .. phrase
+    local translated = Kora.locale.translate('kora_multichar', key)
+    if type(translated) == 'string' and translated ~= key then return translated end
+
+    local english = Kora.require.current('locales/en.lua')
+    return english.Spawn[phrase] or key
+end
+
 local function addLocation(location)
     if not location or not location.id or not location.coords then return end
     spawnLocations[#spawnLocations + 1] = location
@@ -31,14 +40,14 @@ local function buildLocations(cData, houses, isNew, apartments, deferLast)
     local current = isNew and Config.defaultSpawn or (cData and normalizeCoords(cData.position))
     if current and not apartments then
         addLocation({
-            id = 'current', typeLoc = 'current', label = isNew and 'First Arrival' or 'Last Location',
-            description = isNew and 'Begin your new story at the city welcome point.' or 'Return to the exact place this character was last seen.',
+            id = 'current', typeLoc = 'current', label = isNew and multicharSpawnText('first_arrival') or multicharSpawnText('last_location'),
+            description = isNew and multicharSpawnText('first_arrival_description') or multicharSpawnText('last_location_description'),
             coords = current,
         })
     elseif deferLast and not isNew and not apartments then
         local deferred = {
-            id = 'current', typeLoc = 'current', label = 'Last Location', deferred = true,
-            description = 'Return to the exact place this character was last seen.',
+            id = 'current', typeLoc = 'current', label = multicharSpawnText('last_location'), deferred = true,
+            description = multicharSpawnText('last_location_description'),
         }
         spawnLocations[#spawnLocations + 1] = deferred
         spawnById[deferred.id] = deferred
@@ -57,8 +66,8 @@ local function buildLocations(cData, houses, isNew, apartments, deferLast)
         if coords then
             owned[#owned + 1] = {
                 id = ('house:%s'):format(tostring(house.id or key)), typeLoc = 'house', spawnloc = house.id or key,
-                label = house.label or house.name or 'Owned Property',
-                description = 'Spawn at your owned property.', coords = coords,
+                label = house.label or house.name or multicharSpawnText('owned_property'),
+                description = multicharSpawnText('owned_property_description'), coords = coords,
             }
         end
     end
@@ -76,7 +85,7 @@ local function buildLocations(cData, houses, isNew, apartments, deferLast)
         if coords then
             starting[#starting + 1] = {
                 id = ('apartment:%s'):format(name), typeLoc = 'apartment', apartmentType = name,
-                label = apartment.label or name, description = 'Start in a new apartment.', coords = coords,
+                label = apartment.label or name, description = multicharSpawnText('new_apartment_description'), coords = coords,
             }
         end
     end
@@ -141,7 +150,7 @@ local function beginArrival(location)
     local entered, err = Kora.callback.trigger('kora_multichar:server:enterMode', 'spawn')
     if not entered then
         -- No session to move out of: just spawn them rather than strand them.
-        send('multichar:error', err or 'Could not start the arrival flight.')
+        send('multichar:error', err or Kora.lang('Notify.arrival_flight_failed'))
         multicharFinishSpawn(location.coords, false)
         return
     end
@@ -187,7 +196,7 @@ RegisterNUICallback('multichar:play', function(data, cb)
     -- against that character's own list and not whichever one was built last.
     buildLocations(nil, ownedHousesFor(citizenid), false, nil, true)
     if not spawnById[locationId] then
-        send('multichar:error', 'That arrival point is not available.')
+        send('multichar:error', Kora.lang('Notify.arrival_unavailable'))
         cb({ ok = false })
         return
     end
@@ -196,7 +205,7 @@ RegisterNUICallback('multichar:play', function(data, cb)
     SetTimeout(PLAY_LOGIN_TIMEOUT_MS, function()
         if pendingPlay == play then
             pendingPlay = nil
-            send('multichar:error', 'Loading your character took too long. Try again.')
+            send('multichar:error', Kora.lang('Notify.character_load_timeout'))
         end
     end)
     multicharLoadCharacter(citizenid)
@@ -242,7 +251,7 @@ end)
 openSpawnSelection = function(isNew)
     local entered, err = Kora.callback.trigger('kora_multichar:server:enterMode', 'spawn')
     if not entered then
-        send('multichar:error', err or 'Could not open spawn selection.')
+        send('multichar:error', err or Kora.lang('Notify.spawn_selection_failed'))
         return
     end
     multicharSetClientMode('spawn', true)
@@ -310,6 +319,6 @@ RegisterNUICallback('multichar:spawn:choose', function(data, cb)
 end)
 
 RegisterNUICallback('multichar:spawn:exit', function(_, cb)
-    send('multichar:error', 'Choose a spawn location to continue.')
+    send('multichar:error', Kora.lang('Notify.choose_spawn'))
     cb({ ok = false, mandatory = true })
 end)

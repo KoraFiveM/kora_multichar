@@ -2,6 +2,7 @@ import { FormEvent, useEffect, useMemo, useRef, useState } from "react";
 import { Building2, ChevronLeft, ChevronRight, Clock, House, LoaderCircle, LogOut, MapPin, Plus, X } from "lucide-react";
 import { CreatorScreen } from "./Creator";
 import { fetchNui } from "./nui";
+import { setLocales, useLocale } from "./locales";
 import {
   characterName, defaultArrivalId, isValidBirthdate, money, normalizeCharacters, parseArrivalList, parseLibrary, slotTarget, SPAWN_PREVIEW_SUPERSEDED, spawnPreviewTimeout, wrapIndex,
 } from "./lib";
@@ -29,21 +30,28 @@ const DEFAULT_PROFILE: ProfileText = {
 };
 const DEFAULT_UI: UiSettings = { brandName: "Kora", showNewSlotBadge: false, nationalities: [], defaultNationality: "", allowFreeTextNationality: false, profile: DEFAULT_PROFILE, combinedSelect: false };
 
-function parseProfile(raw: unknown): ProfileText {
+function parseProfile(raw: unknown, t: (key: string, ...values: Array<string | number>) => string): ProfileText {
   const source = (raw && typeof raw === "object" ? raw : {}) as Record<string, { label?: unknown; description?: unknown } | undefined>;
-  const profile = { ...DEFAULT_PROFILE };
-  for (const key of Object.keys(DEFAULT_PROFILE) as ProfileCard[]) {
+  const profile: ProfileText = {
+    career: { label: t("UI.profileCareer"), description: "" },
+    affiliation: { label: t("UI.profileAffiliation"), description: "" },
+    finances: { label: t("UI.profileFinances"), description: "" },
+    birthDate: { label: t("UI.profileBirthDate"), description: "" },
+    nationality: { label: t("UI.profileNationality"), description: t("UI.placeOfOrigin") },
+    citizenId: { label: t("UI.profileCitizenId"), description: "" },
+  };
+  for (const key of Object.keys(profile) as ProfileCard[]) {
     const entry = source[key];
     const label = typeof entry?.label === "string" ? entry.label.trim() : "";
     profile[key] = {
-      label: label || DEFAULT_PROFILE[key].label,
-      description: typeof entry?.description === "string" ? entry.description.trim() : DEFAULT_PROFILE[key].description,
+      label: label || profile[key].label,
+      description: typeof entry?.description === "string" ? entry.description.trim() : profile[key].description,
     };
   }
   return profile;
 }
 
-function parseUi(raw: unknown): UiSettings {
+function parseUi(raw: unknown, t: (key: string, ...values: Array<string | number>) => string): UiSettings {
   const ui = (raw && typeof raw === "object" ? raw : {}) as Record<string, unknown>;
   const nationalities = Array.isArray(ui.nationalities)
     ? Array.from(new Set(ui.nationalities.filter((entry): entry is string => typeof entry === "string").map((entry) => entry.trim()).filter(Boolean)))
@@ -55,7 +63,7 @@ function parseUi(raw: unknown): UiSettings {
     nationalities,
     defaultNationality: typeof ui.defaultNationality === "string" ? ui.defaultNationality.trim() : "",
     allowFreeTextNationality: ui.allowFreeTextNationality === true,
-    profile: parseProfile(ui.profile),
+    profile: parseProfile(ui.profile, t),
     combinedSelect: ui.combinedSelect === true,
   };
 }
@@ -64,8 +72,12 @@ type SpawnHints = { previous: string; next: string; preview: string; flying: str
 const DEFAULT_SPAWN_HINTS: SpawnHints = { previous: "Previous", next: "Next", preview: "Preview location", flying: "Flying to location…", spawn: "Spawn" };
 type SpawnPayload = { locations?: SpawnLocation[]; visible?: boolean; previewBudgetMs?: number; switchCooldownMs?: number; settleMs?: number; lockWhileMoving?: boolean; hints?: Partial<SpawnHints> };
 
-function parseSpawnHints(value: Partial<SpawnHints> | undefined): SpawnHints {
-  const pick = (key: keyof SpawnHints) => (typeof value?.[key] === "string" && value[key]!.trim() ? value[key]! : DEFAULT_SPAWN_HINTS[key]);
+function parseSpawnHints(value: Partial<SpawnHints> | undefined, t: (key: string, ...values: Array<string | number>) => string): SpawnHints {
+  const fallback: Record<keyof SpawnHints, string> = {
+    previous: t("UI.spawnPrevious"), next: t("UI.spawnNext"), preview: t("UI.spawnPreview"),
+    flying: t("UI.spawnFlying"), spawn: t("UI.spawn"),
+  };
+  const pick = (key: keyof SpawnHints) => (typeof value?.[key] === "string" && value[key]!.trim() ? value[key]! : fallback[key]);
   return { previous: pick("previous"), next: pick("next"), preview: pick("preview"), flying: pick("flying"), spawn: pick("spawn") };
 }
 
@@ -73,8 +85,8 @@ function roleLabel(role: Character["job"], fallback: string) {
   return role?.label || role?.name || fallback;
 }
 
-function gradeLabel(role: Character["job"]) {
-  return role?.grade?.name || `Grade ${role?.grade?.level ?? 0}`;
+function gradeLabel(role: Character["job"], t: (key: string, ...values: Array<string | number>) => string) {
+  return role?.grade?.name || t("UI.grade", role?.grade?.level ?? 0);
 }
 
 function characterInitials(character: Character) {
@@ -84,6 +96,9 @@ function characterInitials(character: Character) {
 }
 
 export function App() {
+  const t = useLocale();
+  const tRef = useRef(t);
+  tRef.current = t;
   const [stage, setStage] = useState<Stage>("hidden");
   const [characters, setCharacters] = useState<Character[]>([]);
   const [maxCharacters, setMaxCharacters] = useState(5);
@@ -137,6 +152,7 @@ export function App() {
   useEffect(() => {
     const listener = (event: MessageEvent<NuiMessage>) => {
       const { action, data } = event.data || {};
+      if (action === "multichar:locales") { setLocales(data); return; }
       if (action === "multichar:show") {
         const payload = data as { characters?: unknown; maxCharacters?: number; previewWatchdogMs?: number; ui?: Record<string, unknown> & { closeCreateOnBackdrop?: boolean; confirmDiscardOnClose?: boolean; confirmDisconnect?: boolean } };
         setPreviewWatchdogMs(Math.max(0, Number(payload?.previewWatchdogMs) || 0));
@@ -144,7 +160,7 @@ export function App() {
         setConfirmDiscard(payload?.ui?.confirmDiscardOnClose !== false);
         setConfirmDisconnect(payload?.ui?.confirmDisconnect !== false);
         setDisconnecting(false);
-        const nextUi = parseUi(payload?.ui);
+        const nextUi = parseUi(payload?.ui, tRef.current);
         setUiSettings(nextUi);
         setCreateDraft(emptyCreateDraft(nextUi));
         setCharacters(normalizeCharacters(payload?.characters));
@@ -154,14 +170,14 @@ export function App() {
         setIndex(0); setStage("characters"); setBusy(false); setDetails(false); setCreating(false); setDeleting(false); setPreviewing(true); setSpawnTraveling(false);
       } else if (action === "multichar:flight:start") {
         const payload = (data ?? {}) as { location?: string; character?: string | null; skippable?: boolean };
-        setFlight({ location: payload.location || "your arrival point", character: payload.character || null, skippable: payload.skippable !== false, stage: "lift" });
+        setFlight({ location: payload.location || tRef.current("UI.yourArrivalPoint"), character: payload.character || null, skippable: payload.skippable !== false, stage: "lift" });
         setCreating(false); setDeleting(false); setDisconnecting(false); setDetails(false); setPreviewing(false); setBusy(true);
         setStage("flight");
       } else if (action === "multichar:flight:stage") {
         const next = (data as { stage?: string })?.stage;
         if (next) setFlight((current) => (current ? { ...current, stage: next } : current));
       } else if (action === "multichar:close") { setStage("hidden"); setFlight(null); }
-      else if (action === "multichar:error") { setToast(String(data || "Something went wrong.")); setBusy(false); }
+      else if (action === "multichar:error") { setToast(String(data || tRef.current("Notify.generic_error"))); setBusy(false); }
       else if (action === "multichar:previewLoading") setPreviewing(true);
       else if (action === "multichar:previewReady") {
         const payload = data as { scene?: string; error?: string; ok?: boolean };
@@ -188,7 +204,7 @@ export function App() {
         setSpawnLock((data as SpawnPayload)?.lockWhileMoving !== false);
         lastSpawnSwitch.current = 0;
         spawnCameraTarget.current = null;
-        setSpawnHints(parseSpawnHints((data as SpawnPayload)?.hints));
+        setSpawnHints(parseSpawnHints((data as SpawnPayload)?.hints, tRef.current));
         spawnCameraReady.current = false;
         setStage("spawn"); setBusy(false); setSpawnIndex(0); setPreviewing(true); setSpawnTraveling(false);
       } else if (action === "multichar:creator:show") {
@@ -205,14 +221,15 @@ export function App() {
       } else if (action === "multichar:creator:cursor") setCreatorCursor((data as { cursor?: boolean })?.cursor === true);
       else if (action === "multichar:creator:close") setStage("hidden");
       else if (action === "multichar:creator:exported") {
-        setExported((data as { registerCall?: boolean })?.registerCall ? "Registration call copied" : "Config copied");
+        setExported((data as { registerCall?: boolean })?.registerCall ? tRef.current("UI.registrationCopied") : tRef.current("UI.configCopied"));
         window.setTimeout(() => setExported(null), 2400);
       } else if (action === "multichar:creator:validated") {
-        setExported(String((data as { message?: string })?.message || "Scene is valid"));
+        setExported(String((data as { message?: string })?.message || tRef.current("Studio.valid")));
         window.setTimeout(() => setExported(null), 2400);
       }
     };
     window.addEventListener("message", listener);
+    fetchNui("multichar:ready");
     return () => window.removeEventListener("message", listener);
   }, []);
 
@@ -242,7 +259,7 @@ export function App() {
         setArrivals(list);
         setArrivalId((current) => defaultArrivalId(list, current));
         setArrivalsLoading(false);
-        if (!list.length) setToast("No arrival points are available for this character.");
+        if (!list.length) setToast(tRef.current("UI.noArrivalForCharacter"));
       });
     }, 120);
     return () => window.clearTimeout(timer);
@@ -252,7 +269,7 @@ export function App() {
     if (!previewing || stage !== "characters" || !previewWatchdogMs) return;
     const timer = window.setTimeout(() => {
       setPreviewing(false);
-      setToast("The scene preview took too long to load.");
+      setToast(tRef.current("UI.previewTimeout"));
     }, previewWatchdogMs);
     return () => window.clearTimeout(timer);
   }, [previewing, stage, index, previewWatchdogMs]);
@@ -277,19 +294,19 @@ export function App() {
         if (!active) return;
         if (result === null) {
           if (spawnPreviewLiveSeq.current === liveSeqAtStart) {
-            setToast("Arrival preview timed out. You can still spawn here.");
+            setToast(tRef.current("UI.arrivalPreviewTimeout"));
           }
           return;
         }
         if (result?.ok === false) {
           if (result.reason !== SPAWN_PREVIEW_SUPERSEDED) {
-            setToast("That arrival could not be previewed. You can still spawn here.");
+            setToast(tRef.current("UI.arrivalPreviewFailed"));
           }
           return;
         }
         spawnCameraReady.current = true;
       }).catch(() => {
-        if (active) setToast("That arrival could not be previewed. You can still spawn here.");
+        if (active) setToast(tRef.current("UI.arrivalPreviewFailed"));
       }).finally(() => {
         window.clearTimeout(timeoutId);
         if (!active) return;
@@ -365,7 +382,7 @@ export function App() {
 
   return (
     <div className={`app stage-${stage}`}>
-      {toast && <div className="toast"><span>{toast}</span><button aria-label="Dismiss" onClick={() => setToast(null)}><X size={15} /></button></div>}
+      {toast && <div className="toast"><span>{toast}</span><button aria-label={t("UI.dismiss")} onClick={() => setToast(null)}><X size={15} /></button></div>}
       {stage === "characters" && uiSettings.combinedSelect && (
         <CombinedScreen
           characters={characters} character={character} index={index} canCreate={canCreate}
@@ -401,17 +418,13 @@ export function App() {
   );
 }
 
-const PREVIEW_STAGE_TEXT: Record<string, string> = {
-  streaming: "Streaming the area around your arrival point",
-};
-
 function SceneTransition({ stage, previewStage }: { stage: "characters" | "spawn"; previewStage?: string | null }) {
-  const detail = (previewStage && PREVIEW_STAGE_TEXT[previewStage])
-    || "Streaming the world and finding a clear camera angle";
+  const t = useLocale();
+  const detail = previewStage === "streaming" ? t("UI.streamingArea") : t("UI.streamingWorld");
 
   return <div className="scene-transition" role="status" aria-live="polite">
     <div className="transition-content">
-      <h2>{stage === "spawn" ? "Scouting your arrival" : "Setting your scene"}</h2>
+      <h2>{stage === "spawn" ? t("UI.scoutingArrival") : t("UI.settingScene")}</h2>
       <p>{detail}</p>
       <div className="transition-progress"><i /></div>
     </div>
@@ -440,33 +453,34 @@ function CharacterScreen(props: {
   details: boolean; previewing: boolean; sceneName: string; busy: boolean;
   onMove: (delta: number) => void; onAccept: () => void; onDetails: () => void; onCreate: () => void; onDelete: () => void; onDisconnect: () => void;
 }) {
+  const t = useLocale();
   const { character } = props;
-  const job = character ? roleLabel(character.job, "Civilian") : "";
+  const job = character ? roleLabel(character.job, t("UI.civilian")) : "";
   const gang = character?.gang?.name && character.gang.name !== "none" ? character.gang : null;
-  const prev = slotTarget(props.characters, props.canCreate, props.index, -1);
-  const next = slotTarget(props.characters, props.canCreate, props.index, 1);
-  const targetLabel = (target: typeof prev) => target ? `Character ${target.slot}: ${target.label}` : undefined;
-  const slots = [...props.characters.map(characterName), ...(props.canCreate ? ["New character"] : [])];
+  const prev = slotTarget(props.characters, props.canCreate, props.index, -1, t("UI.createNewCharacter"), t("UI.unnamedCharacter"), (cid) => t("UI.characterNumber", cid));
+  const next = slotTarget(props.characters, props.canCreate, props.index, 1, t("UI.createNewCharacter"), t("UI.unnamedCharacter"), (cid) => t("UI.characterNumber", cid));
+  const targetLabel = (target: typeof prev) => target ? t("UI.characterSlot", target.slot, target.label) : undefined;
+  const slots = [...props.characters.map((entry) => characterName(entry, t("UI.unnamedCharacter"), (cid) => t("UI.characterNumber", cid))), ...(props.canCreate ? [t("UI.newCharacterSlot")] : [])];
   return <>
     <span className="brand-mark corner-brand">{props.brand}</span>
-    <button className="quiet-button corner-action" aria-label="Disconnect" onClick={props.onDisconnect}><LogOut size={15} />Disconnect</button>
+    <button className="quiet-button corner-action" aria-label={t("UI.disconnect")} onClick={props.onDisconnect}><LogOut size={15} />{t("UI.disconnect")}</button>
     {props.details && character && <Dossier character={character} profile={props.profile} onClose={props.onDetails} onDelete={props.onDelete} />}
     <section className={`lower-third${character ? "" : " new-character"}`}>
-      <p className="third-kicker">{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</p>
-      <h2>{character ? characterName(character) : "Create character"}{!character && props.showNewBadge && <span className="new-slot-chip">New</span>}</h2>
-      <p className="third-meta">{character ? [job, gradeLabel(character.job), gang ? roleLabel(gang, gang.name || "Affiliation") : null].filter(Boolean).join(" · ") : "Use this slot to begin a new story in Los Santos."}</p>
+      <p className="third-kicker">{props.previewing ? t("UI.loadingScene") : (props.sceneName || t("UI.cinematicPreview"))}</p>
+      <h2>{character ? characterName(character, t("UI.unnamedCharacter"), (cid) => t("UI.characterNumber", cid)) : t("UI.createCharacter")}{!character && props.showNewBadge && <span className="new-slot-chip">{t("UI.newCharacter")}</span>}</h2>
+      <p className="third-meta">{character ? [job, gradeLabel(character.job, t), gang ? roleLabel(gang, gang.name || t("UI.affiliationFallback")) : null].filter(Boolean).join(" · ") : t("UI.newStoryLosSantos")}</p>
       <div className="third-actions">
         <button className="button primary" disabled={props.busy || props.previewing} onClick={props.onAccept}>
           {props.busy ? <LoaderCircle className="spin" size={16} /> : null}
-          {character ? "Continue" : "Create"}
+          {character ? t("UI.continue") : t("UI.createIdentity")}
         </button>
-        {character && <button className="button ghost profile-button" aria-expanded={props.details} onClick={props.onDetails}>Profile</button>}
+        {character && <button className="button ghost profile-button" aria-expanded={props.details} onClick={props.onDetails}>{t("UI.profile")}</button>}
         <SlotNav position={props.index + 1} total={props.count} disabled={props.count <= 1} onMove={props.onMove}
-          prevLabel={prev ? `Previous, ${targetLabel(prev)}` : "Previous"} nextLabel={next ? `Next, ${targetLabel(next)}` : "Next"} prevTitle={targetLabel(prev)} nextTitle={targetLabel(next)} />
+          prevLabel={prev ? t("UI.previousTarget", targetLabel(prev)!) : t("UI.spawnPrevious")} nextLabel={next ? t("UI.nextTarget", targetLabel(next)!) : t("UI.spawnNext")} prevTitle={targetLabel(prev)} nextTitle={targetLabel(next)} />
       </div>
     </section>
     <SlotRail labels={slots} selected={props.index} />
-    <div className="key-hints"><kbd>←</kbd><kbd>→</kbd><span>Browse</span><kbd>Enter</kbd><span>Continue</span></div>
+    <div className="key-hints"><kbd>←</kbd><kbd>→</kbd><span>{t("UI.browse")}</span><kbd>Enter</kbd><span>{t("UI.continue")}</span></div>
   </>;
 }
 
@@ -489,38 +503,39 @@ function CombinedScreen(props: {
   onPickCharacter: (index: number) => void; onPickArrival: (id: string) => void;
   onAccept: () => void; onDetails: () => void; onDelete: () => void; onDisconnect: () => void;
 }) {
+  const t = useLocale();
   const { character, arrivals, arrivalId } = props;
   const arrival = arrivals.find((entry) => entry.id === arrivalId) ?? null;
-  const job = character ? roleLabel(character.job, "Civilian") : "";
+  const job = character ? roleLabel(character.job, t("UI.civilian")) : "";
   const canPlay = !props.busy && !props.previewing && (!character || (!!arrival && !props.arrivalsLoading));
   return <>
     <span className="brand-mark corner-brand">{props.brand}</span>
-    <button className="quiet-button corner-action" aria-label="Disconnect" onClick={props.onDisconnect}><LogOut size={15} />Disconnect</button>
+    <button className="quiet-button corner-action" aria-label={t("UI.disconnect")} onClick={props.onDisconnect}><LogOut size={15} />{t("UI.disconnect")}</button>
 
-    <aside className="pick-panel who-panel panel" aria-label="Characters">
-      <h3 className="pick-heading"><span>Who</span><span>{props.characters.length} {props.characters.length === 1 ? "character" : "characters"}</span></h3>
+    <aside className="pick-panel who-panel panel" aria-label={t("UI.characters")}>
+      <h3 className="pick-heading"><span>{t("UI.who")}</span><span>{t(props.characters.length === 1 ? "UI.characterCount" : "UI.characterCountPlural", props.characters.length)}</span></h3>
       <ul className="pick-list">
         {props.characters.map((entry, i) => <li key={entry.citizenid}>
           <button className={`pick-card${i === props.index ? " on" : ""}`} aria-pressed={i === props.index} onClick={() => props.onPickCharacter(i)}>
             <span className="pick-avatar">{characterInitials(entry)}</span>
-            <span className="pick-text"><strong>{characterName(entry)}</strong><small>{[roleLabel(entry.job, "Civilian"), gradeLabel(entry.job)].join(" · ")}</small></span>
+            <span className="pick-text"><strong>{characterName(entry, t("UI.unnamedCharacter"), (cid) => t("UI.characterNumber", cid))}</strong><small>{[roleLabel(entry.job, t("UI.civilian")), gradeLabel(entry.job, t)].join(" · ")}</small></span>
           </button>
         </li>)}
         {props.canCreate && <li>
           <button className={`pick-card new${!character ? " on" : ""}`} aria-pressed={!character} onClick={() => props.onPickCharacter(props.characters.length)}>
             <span className="pick-avatar"><Plus size={16} /></span>
-            <span className="pick-text"><strong>Create character</strong><small>Begin a new story</small></span>
+            <span className="pick-text"><strong>{t("UI.createCharacter")}</strong><small>{t("UI.beginNewStory")}</small></span>
           </button>
         </li>}
       </ul>
     </aside>
 
-    <aside className="pick-panel where-panel panel" aria-label="Arrival points">
-      <h3 className="pick-heading"><span>Where</span>{character && arrivals.length > 0 && <span>{arrivals.length} arrival points</span>}</h3>
+    <aside className="pick-panel where-panel panel" aria-label={t("UI.arrivalPoints")}>
+      <h3 className="pick-heading"><span>{t("UI.where")}</span>{character && arrivals.length > 0 && <span>{t("UI.arrivalCount", arrivals.length)}</span>}</h3>
       {!character
-        ? <p className="pick-note">New characters begin at the first arrival point.</p>
+        ? <p className="pick-note">{t("UI.newCharacterFirstArrival")}</p>
         : arrivals.length === 0
-          ? <p className="pick-note" role="status">{props.arrivalsLoading ? "Finding arrival points…" : "No arrival points available."}</p>
+          ? <p className="pick-note" role="status">{props.arrivalsLoading ? t("UI.findingArrivalPoints") : t("UI.noArrivalPoints")}</p>
           : <ul className={`pick-list${props.arrivalsLoading ? " loading" : ""}`}>
             {arrivals.map((entry) => <li key={entry.id}>
               <button className={`pick-card${entry.id === arrivalId ? " on" : ""}`} aria-pressed={entry.id === arrivalId} onClick={() => props.onPickArrival(entry.id)}>
@@ -534,18 +549,18 @@ function CombinedScreen(props: {
     {props.details && character && <Dossier character={character} profile={props.profile} onClose={props.onDetails} onDelete={props.onDelete} />}
 
     <section className="play-bar">
-      <h2>{character ? characterName(character) : "Create character"}</h2>
-      <p className="third-meta">{character ? `${job}${arrival ? ` → ${arrival.label}` : ""}` : "Use this slot to begin a new story in Los Santos."}</p>
+      <h2>{character ? characterName(character, t("UI.unnamedCharacter"), (cid) => t("UI.characterNumber", cid)) : t("UI.createCharacter")}</h2>
+      <p className="third-meta">{character ? `${job}${arrival ? ` → ${arrival.label}` : ""}` : t("UI.newStoryLosSantos")}</p>
       <div className="third-actions">
-        {character && <button className="button ghost profile-button" aria-expanded={props.details} onClick={props.onDetails}>Profile</button>}
+        {character && <button className="button ghost profile-button" aria-expanded={props.details} onClick={props.onDetails}>{t("UI.profile")}</button>}
         <button className="button primary play-button" disabled={!canPlay} onClick={props.onAccept}>
           {props.busy ? <LoaderCircle className="spin" size={16} /> : null}
-          {character ? "Play" : "Create"}
+          {character ? t("UI.play") : t("UI.createIdentity")}
         </button>
       </div>
     </section>
-    <p className="third-kicker scene-label">{props.previewing ? "Loading scene…" : (props.sceneName || "Cinematic preview")}</p>
-    <div className="key-hints combined-hints"><kbd>A</kbd><kbd>D</kbd><span>Character</span><kbd>↑</kbd><kbd>↓</kbd><span>Arrival</span><kbd>Enter</kbd><span>Play</span></div>
+    <p className="third-kicker scene-label">{props.previewing ? t("UI.loadingScene") : (props.sceneName || t("UI.cinematicPreview"))}</p>
+    <div className="key-hints combined-hints"><kbd>A</kbd><kbd>D</kbd><span>{t("UI.character")}</span><kbd>↑</kbd><kbd>↓</kbd><span>{t("UI.arrival")}</span><kbd>Enter</kbd><span>{t("UI.play")}</span></div>
   </>;
 }
 
@@ -555,18 +570,20 @@ function CombinedScreen(props: {
  * the whole UI once the player has arrived.
  */
 function FlightScreen({ flight }: { flight: FlightState }) {
+  const t = useLocale();
   return <div className={`flight stage-${flight.stage}`} role="status" aria-live="polite">
     <section className="flight-caption">
-      <p className="third-kicker">{flight.stage === "descent" ? "Arriving at" : "Flying to"}</p>
+      <p className="third-kicker">{flight.stage === "descent" ? t("UI.arrivingAt") : t("UI.flyingTo")}</p>
       <h2>{flight.location}</h2>
       {flight.character && <p className="third-meta">{flight.character}</p>}
       <div className="flight-progress"><i /></div>
-      {flight.skippable && <p className="flight-skip"><kbd>Space</kbd><span>Skip</span></p>}
+      {flight.skippable && <p className="flight-skip"><kbd>Space</kbd><span>{t("UI.skip")}</span></p>}
     </section>
   </div>;
 }
 
 function Dossier({ character, profile, onClose, onDelete }: { character: Character; profile: ProfileText; onClose: () => void; onDelete: () => void }) {
+  const t = useLocale();
   const gang = character.gang?.name && character.gang.name !== "none" ? character.gang : null;
   const card = (key: ProfileCard, value: string, detail?: string) => {
     const text = detail === undefined ? profile[key].description : detail;
@@ -574,32 +591,25 @@ function Dossier({ character, profile, onClose, onDelete }: { character: Charact
   };
   return <aside className="dossier panel">
     <div className="dossier-heading">
-      <div><h3>{characterName(character)}</h3><p>{roleLabel(character.job, "Civilian")} · {gradeLabel(character.job)}</p></div>
-      <button className="icon-button" aria-label="Close profile" onClick={onClose}><X size={16} /></button>
+      <div><h3>{characterName(character, t("UI.unnamedCharacter"), (cid) => t("UI.characterNumber", cid))}</h3><p>{roleLabel(character.job, t("UI.civilian"))} · {gradeLabel(character.job, t)}</p></div>
+      <button className="icon-button" aria-label={t("UI.closeProfile")} onClick={onClose}><X size={16} /></button>
     </div>
     <div className="detail-list">
-      {card("career", roleLabel(character.job, "Civilian"), gradeLabel(character.job))}
-      {card("affiliation", gang ? roleLabel(gang, gang.name || "Gang") : "None", gang ? gradeLabel(gang) : "Independent")}
-      {card("finances", `${money(character.money?.bank)} bank`, `${money(character.money?.cash)} cash`)}
-      {card("birthDate", character.charinfo?.birthdate || "Unknown")}
-      {card("nationality", character.charinfo?.nationality || "Unknown")}
+      {card("career", roleLabel(character.job, t("UI.civilian")), gradeLabel(character.job, t))}
+      {card("affiliation", gang ? roleLabel(gang, gang.name || t("UI.gang")) : t("UI.none"), gang ? gradeLabel(gang, t) : t("UI.independent"))}
+      {card("finances", t("UI.bankAmount", money(character.money?.bank)), t("UI.cashAmount", money(character.money?.cash)))}
+      {card("birthDate", character.charinfo?.birthdate || t("UI.unknown"))}
+      {card("nationality", character.charinfo?.nationality || t("UI.unknown"))}
       {card("citizenId", character.citizenid)}
     </div>
-    <button className="danger-link" onClick={onDelete}>Delete character</button>
+    <button className="danger-link" onClick={onDelete}>{t("UI.deleteCharacter")}</button>
   </aside>;
 }
 
 type CreateField = "firstname" | "lastname" | "birthdate" | "nationality";
 type CreateErrors = Partial<Record<CreateField, string>>;
 
-const CREATE_MESSAGES = {
-  firstnameRequired: "Enter a first name.",
-  lastnameRequired: "Enter a last name.",
-  nameLength: "Names must be between 1 and 24 characters.",
-  birthdate: "Enter a real, non-future birth date.",
-  nationalityList: "Choose a nationality from the list.",
-  nationalityLength: "Nationality must be between 2 and 32 characters.",
-};
+
 
 type CreateDraft = { firstname: string; lastname: string; birthdate: string; nationality: string; gender: number };
 
@@ -611,6 +621,7 @@ function emptyCreateDraft(ui: UiSettings): CreateDraft {
 }
 
 function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onClose, onBusy }: { ui: UiSettings; draft: CreateDraft; onDraft: (draft: CreateDraft) => void; closeOnBackdrop: boolean; confirmDiscard: boolean; onClose: () => void; onBusy: (value: boolean) => void }) {
+  const t = useLocale();
   const [errors, setErrors] = useState<CreateErrors>({});
   const formRef = useRef<HTMLFormElement>(null);
   const EMPTY_CREATE_DRAFT = useMemo(() => emptyCreateDraft(ui), [ui]);
@@ -648,13 +659,13 @@ function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onC
     const nationality = draft.nationality.trim();
     const gender = draft.gender;
     const found: CreateErrors = {};
-    if (!firstname) found.firstname = CREATE_MESSAGES.firstnameRequired;
-    else if (firstname.length > 24) found.firstname = CREATE_MESSAGES.nameLength;
-    if (!lastname) found.lastname = CREATE_MESSAGES.lastnameRequired;
-    else if (lastname.length > 24) found.lastname = CREATE_MESSAGES.nameLength;
-    if (!isValidBirthdate(birthdate)) found.birthdate = CREATE_MESSAGES.birthdate;
-    if (useDropdown && !nationalityList.includes(nationality)) found.nationality = CREATE_MESSAGES.nationalityList;
-    else if (nationality.length < 2 || nationality.length > 32) found.nationality = CREATE_MESSAGES.nationalityLength;
+    if (!firstname) found.firstname = t("UI.firstnameRequired");
+    else if (firstname.length > 24) found.firstname = t("UI.nameLength");
+    if (!lastname) found.lastname = t("UI.lastnameRequired");
+    else if (lastname.length > 24) found.lastname = t("UI.nameLength");
+    if (!isValidBirthdate(birthdate)) found.birthdate = t("UI.birthdateError");
+    if (useDropdown && !nationalityList.includes(nationality)) found.nationality = t("UI.nationalityListError");
+    else if (nationality.length < 2 || nationality.length > 32) found.nationality = t("UI.nationalityLengthError");
     const first = (["firstname", "lastname", "birthdate", "nationality"] as const).find((field) => found[field]);
     if (first) {
       setErrors(found);
@@ -665,21 +676,21 @@ function CreateDialog({ ui, draft, onDraft, closeOnBackdrop, confirmDiscard, onC
     fetchNui("multichar:create", { firstname, lastname, birthdate, nationality, gender });
   };
   return <div className="modal-layer"><div className="modal-backdrop" onClick={closeOnBackdrop ? onClose : undefined} /><form ref={formRef} noValidate className="modal panel create-modal" onSubmit={submit}>
-    <div className="panel-heading"><h3>Create character</h3><button type="button" className="icon-button" aria-label="Close" onClick={requestClose}><X size={16} /></button></div>
-    <p className="modal-copy">Build the identity. You will customize appearance immediately after spawning.</p>
+    <div className="panel-heading"><h3>{t("UI.createCharacter")}</h3><button type="button" className="icon-button" aria-label={t("UI.close")} onClick={requestClose}><X size={16} /></button></div>
+    <p className="modal-copy">{t("UI.createDescription")}</p>
     <div className="field-grid">
-      <div className="field"><label>First name<input name="firstname" autoFocus maxLength={24} required aria-invalid={!!errors.firstname} aria-describedby={errors.firstname ? "create-firstname-error" : undefined} value={draft.firstname} onChange={(event) => setField("firstname", event.target.value)} /></label><FieldError id="create-firstname-error" message={errors.firstname} /></div>
-      <div className="field"><label>Last name<input name="lastname" maxLength={24} required aria-invalid={!!errors.lastname} aria-describedby={errors.lastname ? "create-lastname-error" : undefined} value={draft.lastname} onChange={(event) => setField("lastname", event.target.value)} /></label><FieldError id="create-lastname-error" message={errors.lastname} /></div>
+      <div className="field"><label>{t("UI.firstName")}<input name="firstname" autoFocus maxLength={24} required aria-invalid={!!errors.firstname} aria-describedby={errors.firstname ? "create-firstname-error" : undefined} value={draft.firstname} onChange={(event) => setField("firstname", event.target.value)} /></label><FieldError id="create-firstname-error" message={errors.firstname} /></div>
+      <div className="field"><label>{t("UI.lastName")}<input name="lastname" maxLength={24} required aria-invalid={!!errors.lastname} aria-describedby={errors.lastname ? "create-lastname-error" : undefined} value={draft.lastname} onChange={(event) => setField("lastname", event.target.value)} /></label><FieldError id="create-lastname-error" message={errors.lastname} /></div>
     </div>
     <div className="field-grid">
-      <div className="field"><label>Birth date<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} required aria-invalid={!!errors.birthdate} aria-describedby={errors.birthdate ? "create-birthdate-error" : undefined} value={draft.birthdate} onChange={(event) => setField("birthdate", event.target.value)} /></label><FieldError id="create-birthdate-error" message={errors.birthdate} /></div>
-      <div className="field"><label>Nationality{useDropdown
+      <div className="field"><label>{t("UI.birthDate")}<input name="birthdate" type="date" max={new Date().toISOString().slice(0, 10)} required aria-invalid={!!errors.birthdate} aria-describedby={errors.birthdate ? "create-birthdate-error" : undefined} value={draft.birthdate} onChange={(event) => setField("birthdate", event.target.value)} /></label><FieldError id="create-birthdate-error" message={errors.birthdate} /></div>
+      <div className="field"><label>{t("UI.nationality")}{useDropdown
         ? <select name="nationality" required aria-invalid={!!errors.nationality} aria-describedby={errors.nationality ? "create-nationality-error" : undefined} value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)}>{(nationalityList.includes(draft.nationality) ? nationalityList : [draft.nationality, ...nationalityList]).map((entry) => <option key={entry} value={entry}>{entry}</option>)}</select>
         : <><input name="nationality" maxLength={32} required aria-invalid={!!errors.nationality} aria-describedby={errors.nationality ? "create-nationality-error" : undefined} list={nationalityList.length ? "nationality-options" : undefined} value={draft.nationality} onChange={(event) => setField("nationality", event.target.value)} />{nationalityList.length > 0 && <datalist id="nationality-options">{nationalityList.map((entry) => <option key={entry} value={entry} />)}</datalist>}</>}</label><FieldError id="create-nationality-error" message={errors.nationality} /></div>
     </div>
-    <div className="segmented" aria-label="Body model"><button type="button" className={draft.gender === 0 ? "active" : ""} onClick={() => { setField("gender", 0); fetchNui("multichar:createPreview", { gender: 0 }); }}>Male</button><button type="button" className={draft.gender === 1 ? "active" : ""} onClick={() => { setField("gender", 1); fetchNui("multichar:createPreview", { gender: 1 }); }}>Female</button></div>
-    {asking && <div className="discard-prompt" role="alertdialog" aria-label="Discard details"><p>Discard the identity details you entered?</p><div className="modal-actions"><button type="button" className="button ghost" onClick={keepEditing}>Keep editing</button><button type="button" className="button destructive" onClick={requestClose}>Discard</button></div></div>}
-    {!asking && <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>Cancel</button><button className="button primary">Create identity</button></div>}
+    <div className="segmented" aria-label={t("UI.bodyModel")}><button type="button" className={draft.gender === 0 ? "active" : ""} onClick={() => { setField("gender", 0); fetchNui("multichar:createPreview", { gender: 0 }); }}>{t("UI.male")}</button><button type="button" className={draft.gender === 1 ? "active" : ""} onClick={() => { setField("gender", 1); fetchNui("multichar:createPreview", { gender: 1 }); }}>{t("UI.female")}</button></div>
+    {asking && <div className="discard-prompt" role="alertdialog" aria-label={t("UI.discardDetails")}><p>{t("UI.discardPrompt")}</p><div className="modal-actions"><button type="button" className="button ghost" onClick={keepEditing}>{t("UI.keepEditing")}</button><button type="button" className="button destructive" onClick={requestClose}>{t("UI.discard")}</button></div></div>}
+    {!asking && <div className="modal-actions"><button type="button" className="button ghost" onClick={requestClose}>{t("UI.cancel")}</button><button className="button primary">{t("UI.createIdentity")}</button></div>}
   </form></div>;
 }
 
@@ -688,40 +699,43 @@ function FieldError({ id, message }: { id: string; message?: string }) {
 }
 
 function DisconnectDialog({ onClose }: { onClose: () => void }) {
+  const t = useLocale();
   useEffect(() => {
     const onKey = (event: KeyboardEvent) => { if (event.key === "Escape") onClose(); };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, [onClose]);
-  return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><div className="modal panel disconnect-modal" role="alertdialog" aria-label="Disconnect">
-    <div className="panel-heading"><h3>Disconnect?</h3><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16} /></button></div>
-    <p className="modal-copy">You will leave the server and return to the main menu.</p>
-    <div className="modal-actions"><button className="button ghost" onClick={onClose}>Cancel</button><button className="button destructive" autoFocus onClick={() => { onClose(); fetchNui("multichar:disconnect"); }}>Disconnect</button></div>
+  return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><div className="modal panel disconnect-modal" role="alertdialog" aria-label={t("UI.disconnect")}>
+    <div className="panel-heading"><h3>{t("UI.disconnectQuestion")}</h3><button className="icon-button" aria-label={t("UI.close")} onClick={onClose}><X size={16} /></button></div>
+    <p className="modal-copy">{t("UI.disconnectDescription")}</p>
+    <div className="modal-actions"><button className="button ghost" onClick={onClose}>{t("UI.cancel")}</button><button className="button destructive" autoFocus onClick={() => { onClose(); fetchNui("multichar:disconnect"); }}>{t("UI.disconnect")}</button></div>
   </div></div>;
 }
 
 function DeleteDialog({ character, onClose, onBusy }: { character: Character; onClose: () => void; onBusy: (value: boolean) => void }) {
-  const name = characterName(character); const [typed, setTyped] = useState("");
+  const t = useLocale();
+  const name = characterName(character, t("UI.unnamedCharacter"), (cid) => t("UI.characterNumber", cid)); const [typed, setTyped] = useState("");
   return <div className="modal-layer"><div className="modal-backdrop" onClick={onClose} /><div className="modal panel delete-modal">
-    <div className="panel-heading"><h3>Delete {name}?</h3><button className="icon-button" aria-label="Close" onClick={onClose}><X size={16} /></button></div>
-    <p className="modal-copy">This cannot be undone. Type <strong>{name}</strong> to confirm.</p>
-    <label>Character name<input value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus /></label>
-    <div className="modal-actions"><button className="button ghost" onClick={onClose}>Cancel</button><button className="button destructive" disabled={typed !== name} onClick={() => { onBusy(true); onClose(); fetchNui("multichar:delete", { citizenid: character.citizenid }); }}>Delete forever</button></div>
+    <div className="panel-heading"><h3>{t("UI.deleteQuestion", name)}</h3><button className="icon-button" aria-label={t("UI.close")} onClick={onClose}><X size={16} /></button></div>
+    <p className="modal-copy">{t("UI.deleteConfirmation", name)}</p>
+    <label>{t("UI.characterName")}<input value={typed} onChange={(event) => setTyped(event.target.value)} autoFocus /></label>
+    <div className="modal-actions"><button className="button ghost" onClick={onClose}>{t("UI.cancel")}</button><button className="button destructive" disabled={typed !== name} onClick={() => { onBusy(true); onClose(); fetchNui("multichar:delete", { citizenid: character.citizenid }); }}>{t("UI.deleteForever")}</button></div>
   </div></div>;
 }
 
 function SpawnScreen({ location, locations, index, count, busy, previewing, traveling, locked, hints, onMove, onAccept }: { location: SpawnLocation | null; locations: SpawnLocation[]; index: number; count: number; busy: boolean; previewing: boolean; traveling: boolean; locked: boolean; hints: SpawnHints; onMove: (delta: number) => void; onAccept: () => void }) {
+  const t = useLocale();
   return <>
-    <header className="corner-title"><h1>Where do you wake up?</h1></header>
+    <header className="corner-title"><h1>{t("UI.spawnTitle")}</h1></header>
     <section className="lower-third spawn-third">
       {traveling
-        ? <p className="third-kicker" role="status">Flying to <strong>{location?.label}</strong></p>
-        : <p className="third-kicker">Arrival point</p>}
-      <h2>{location?.label || "Loading locations"}</h2>
-      <p className="third-meta">{location?.description || "Preparing a safe arrival point…"}</p>
+        ? <p className="third-kicker" role="status">{t("UI.flightArrival")} <strong>{location?.label}</strong></p>
+        : <p className="third-kicker">{t("UI.arrivalPoint")}</p>}
+      <h2>{location?.label || t("UI.loadingLocations")}</h2>
+      <p className="third-meta">{location?.description || t("UI.preparingArrival")}</p>
       <div className="third-actions">
-        <button className="button primary" disabled={!location || busy || previewing || traveling} onClick={onAccept}>{busy ? <LoaderCircle className="spin" size={16} /> : null}Spawn here</button>
-        <SlotNav position={count ? index + 1 : 0} total={count} disabled={count <= 1 || busy || locked} onMove={onMove} prevLabel="Previous location" nextLabel="Next location" />
+        <button className="button primary" disabled={!location || busy || previewing || traveling} onClick={onAccept}>{busy ? <LoaderCircle className="spin" size={16} /> : null}{t("UI.spawnHere")}</button>
+        <SlotNav position={count ? index + 1 : 0} total={count} disabled={count <= 1 || busy || locked} onMove={onMove} prevLabel={t("UI.previousLocation")} nextLabel={t("UI.nextLocation")} />
       </div>
     </section>
     <SlotRail labels={locations.map((entry) => entry.label)} selected={index} />

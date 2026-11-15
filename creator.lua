@@ -306,7 +306,7 @@ RegisterCommand('kora_multichar_creator_toggle', function()
 end, false)
 creatorToggleBinding = Kora.keybind.add({
     name = 'kora_multichar_creator_toggle',
-    description = 'Scene Studio: Toggle Cursor / Freecam',
+    description = Kora.lang('Notify.creator_toggle'),
     defaultKey = 'TAB',
     onPressed = function() if creator.active then setCursor(not creator.cursor) end end,
 })
@@ -411,7 +411,7 @@ RegisterNUICallback('multichar:creator:action', function(data, cb)
         if normalized then
             creator.draft = normalized
             updateUi()
-            send('multichar:creator:validated', { message = 'Scene is valid and ready to export.' })
+            send('multichar:creator:validated', { message = Kora.lang('Studio.valid') })
         else
             updateUi(err)
         end

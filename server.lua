@@ -118,16 +118,16 @@ Kora.callback.register('kora_multichar:server:leaveMode', leaveMode, { rateLimit
 ---@return boolean ok
 ---@return string result the value to store, or the reason it was refused
 local function validateNationality(value)
-    if type(value) ~= 'string' then return false, 'Choose a valid nationality.' end
+    if type(value) ~= 'string' then return false, Kora.lang('Notify.invalid_nationality') end
     value = value:match('^%s*(.-)%s*$')
     local list = Config.nationalities
     if type(list) == 'table' and #list > 0 and not Config.allowFreeTextNationality then
         for _, entry in ipairs(list) do
             if entry == value then return true, value end
         end
-        return false, 'Choose a nationality from the list.'
+        return false, Kora.lang('Notify.nationality_not_allowed')
     end
-    if #value < 2 or #value > 32 then return false, 'Nationality must be between 2 and 32 characters.' end
+    if #value < 2 or #value > 32 then return false, Kora.lang('Notify.nationality_length') end
     return true, value
 end
 
@@ -149,12 +149,12 @@ end
 if Config.creator.enabled then
     Kora.commands.add(Config.creator.command, 'Open the cinematic multicharacter scene studio', nil, false, function(src)
         if Player(src).state['kora_core:loggedIn'] ~= true then
-            Kora.notify.send(src, { type = 'error', message = 'Load a character before opening the scene studio.' })
+            Kora.notify.send(src, { type = 'error', message = Kora.lang('Notify.scene_studio_load_character') })
             return
         end
         local ok, err = enterMode(src, 'creator')
         if not ok then
-            Kora.notify.send(src, { type = 'error', message = err or 'Could not open the scene studio.' })
+            Kora.notify.send(src, { type = 'error', message = err or Kora.lang('Notify.scene_studio_open_failed') })
             return
         end
         TriggerClientEvent('kora_multichar:client:openCreator', src, SceneSchema.clone(scenes))
@@ -167,16 +167,16 @@ end
 if Config.logout.enabled then
     Kora.commands.add(Config.logout.command, 'Drop your character and return to character select', nil, false, function(src)
         if Player(src).state['kora_core:loggedIn'] ~= true then
-            Kora.notify.send(src, { type = 'error', message = 'You are not on a character.' })
+            Kora.notify.send(src, { type = 'error', message = Kora.lang('Notify.not_on_character') })
             return
         end
         if sessions[src] then
-            Kora.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
+            Kora.notify.send(src, { type = 'error', message = Kora.lang('Notify.finish_selection_first') })
             return
         end
         local ok, result = pcall(function() return exports.kora_core:logout(src) end)
         if not ok or result ~= true then
-            Kora.notify.send(src, { type = 'error', message = 'Could not log out of that character.' })
+            Kora.notify.send(src, { type = 'error', message = Kora.lang('Notify.logout_failed') })
         end
     end, {
         permission = Config.logout.minimumPermission,
@@ -186,7 +186,7 @@ end
 
 Kora.commands.add('closeNUI', 'Close the character selection screen if it is stuck', nil, false, function(src)
     if sessions[src] then
-        Kora.notify.send(src, { type = 'error', message = 'Finish the current character-select session first.' })
+        Kora.notify.send(src, { type = 'error', message = Kora.lang('Notify.finish_selection_first') })
         return
     end
     TriggerClientEvent('qb-multicharacter:client:closeNUI', src)
