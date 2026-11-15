@@ -48,7 +48,11 @@ _G.exports = setmetatable(exportTable, { __call = function(_, name, callback) ex
 local heldLevel, permissionCalls = {}, {}
 local commandDefs, notifications = {}, {}
 
+local logged = {}
 _G.Kora = {
+    logging = setmetatable({ isEnabled = function() return true end }, { __index = function(_, level)
+        return function(event, message, fields) logged[#logged + 1] = { level = level, event = event, message = message, fields = fields }; return true end
+    end }),
     util = { isFiniteNumber = function(value)
         return type(value) == 'number' and value == value and value > -math.huge and value < math.huge
     end },
@@ -417,6 +421,19 @@ H.test('a player who drops loses their cooldown, so the slot is not held for the
     _G.source = 21
     for _, callback in ipairs(handlers.playerDropped or {}) do callback() end
     H.truthy(#relay(21, 100.0, 200.0, 29.0) > 0, 'a fresh connection on the same id is not rate-limited by the old one')
+end)
+
+H.test('a rejected bundled scene is reported through Kora.logging.error with the reason in fields', function()
+    logged = {}
+    Config.scenes.__broken = { label = 'broken' }
+    dofile(root .. 'server.lua')
+    Config.scenes.__broken = nil
+    local call
+    for _, entry in ipairs(logged) do if entry.event == 'scene.bundled_rejected' then call = entry end end
+    H.truthy(call, 'a scene.bundled_rejected record was logged')
+    H.equal(call.level, 'error', 'level')
+    H.equal(call.fields.sceneId, '__broken', 'scene id carried in fields')
+    H.truthy(call.fields.error ~= nil and call.fields.error ~= '', 'error carried in fields')
 end)
 
 H.report('server')

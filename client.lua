@@ -41,12 +41,13 @@ local function bootCall(label, attempt, attempts)
         local ok, value = pcall(attempt)
         if ok and value ~= nil then return value end
         if tries < attempts then
-            print(('^3[kora_multichar]^7 %s did not answer (attempt %d/%d) -- retrying in %dms')
-                :format(label, tries, attempts, BOOT_RETRY_MS))
+            Kora.logging.warn('boot.call_no_answer', 'A startup call did not answer; retrying', {
+                label = tostring(label), attempt = tries, attempts = attempts, retryMs = BOOT_RETRY_MS,
+            })
             Wait(BOOT_RETRY_MS)
         end
     end
-    print(('^1[kora_multichar]^7 %s never answered after %d attempt(s).'):format(label, attempts))
+    Kora.logging.error('boot.call_never_answered', 'A startup call never answered', { label = tostring(label), attempts = attempts })
     return nil
 end
 
@@ -77,7 +78,7 @@ local function previewCharacter(citizenid)
             return Kora.callback.trigger('qb-multicharacter:server:getSkin', citizenid)
         end)
         if not ok then
-            print(('^3[kora_multichar]^7 skin fetch failed, using default model: %s'):format(tostring(model)))
+            Kora.logging.warn('skin.fetch_failed', 'Skin fetch failed; using the default model', { error = tostring(model) })
             model, skin = nil, nil
         end
         if generation ~= previewGeneration then return end
@@ -132,7 +133,7 @@ local function resetNewCharacterAppearance()
     if GetResourceState('kora_clothing') ~= 'started' then return end
     local ok, err = pcall(function() return exports.kora_clothing:applyStarterAppearance() end)
     if not ok then
-        print(('^3[kora_multichar]^7 starter outfit could not be applied: %s'):format(tostring(err)))
+        Kora.logging.warn('outfit.starter_failed', 'Starter outfit could not be applied', { error = tostring(err) })
     end
 end
 
@@ -216,7 +217,7 @@ function multicharArrive(location, forceNew)
         onStage = function(stage) send('multichar:flight:stage', { stage = stage }) end,
     })
     if not ok then
-        print(('^3[kora_multichar]^7 arrival flight did not complete (%s); using a plain spawn.'):format(tostring(reason)))
+        Kora.logging.warn('spawn.arrival_flight_failed', 'Arrival flight did not complete; using a plain spawn', { reason = tostring(reason) })
         SceneRuntime.releaseArrivalEffect()
         finishAt(location.coords, isNew)
         return
@@ -249,13 +250,15 @@ local function refreshCharacters()
     for tries = 1, BOOT_MAX_ATTEMPTS do
         entered, enterErr = Kora.callback.trigger('kora_multichar:server:enterMode', 'selection')
         if entered ~= nil then break end
-        print(('^3[kora_multichar]^7 selection handshake did not answer (attempt %d/%d) -- retrying in %dms')
-            :format(tries, BOOT_MAX_ATTEMPTS, BOOT_RETRY_MS))
+        Kora.logging.warn('selection.handshake_no_answer', 'Selection handshake did not answer; retrying', {
+            attempt = tries, attempts = BOOT_MAX_ATTEMPTS, retryMs = BOOT_RETRY_MS,
+        })
         Wait(BOOT_RETRY_MS)
     end
     if not entered then
-        print(('^1[kora_multichar]^7 could not enter selection mode: %s')
-            :format(tostring(enterErr or 'the server never answered')))
+        Kora.logging.error('selection.enter_failed', 'Could not enter selection mode', {
+            error = tostring(enterErr or 'the server never answered'),
+        })
         return
     end
     currentMode = 'selection'
@@ -456,7 +459,7 @@ local function awaitStablePlayerPed()
         end
         Wait(0)
     end
-    print('^3[kora_multichar]^7 player ped never settled; opening selection anyway.')
+    Kora.logging.warn('selection.ped_not_settled', 'Player ped never settled; opening selection anyway')
 end
 
 local function whenServerIdReady(callback)
