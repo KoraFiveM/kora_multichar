@@ -86,7 +86,7 @@ table.sort(configuredIds)
 for _, id in ipairs(configuredIds) do
     local definition = Config.scenes[id]
     local ok, err = registerScene(GetCurrentResourceName(), id, definition, false)
-    if not ok then print(('^1[kora_multichar]^7 bundled scene %s rejected: %s'):format(tostring(id), tostring(err))) end
+    if not ok then Kora.logging.error('scene.bundled_rejected', 'A bundled scene was rejected', { sceneId = tostring(id), error = tostring(err) }) end
 end
 
 exports('RegisterScene', function(id, definition)
