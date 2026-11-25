@@ -10,6 +10,7 @@
       "spawn.lua"
     ],
     "server": [
+      "kora_versioncheck.lua",
       "server.lua"
     ],
     "shared": [
