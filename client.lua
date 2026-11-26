@@ -133,7 +133,7 @@ end
 local function resetNewCharacterAppearance()
     if Config.newCharacter and Config.newCharacter.resetAppearance == false then return end
     if GetResourceState('kora_clothing') ~= 'started' then return end
-    local ok, err = pcall(function() return exports.kora_clothing:applyStarterAppearance() end)
+    local ok, err = pcall(function() return Kora.bridge.applyStarterAppearance() end)
     if not ok then
         Kora.logging.warn('outfit.starter_failed', 'Starter outfit could not be applied', { error = tostring(err) })
     end
